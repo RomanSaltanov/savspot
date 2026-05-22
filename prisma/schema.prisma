@@ -5,7 +5,15 @@
 
 generator client {
   provider = "prisma-client-js"
-  output   = "./generated/prisma"
+  // Output the generated client into apps/api/ so Vercel's function bundling
+  // (which traces paths from the function root) can include it. Previously
+  // output to ./generated/prisma which resolves to <repo>/prisma/generated/
+  // — outside apps/api, so Vercel couldn't ship it with the function.
+  output   = "../apps/api/src/generated/prisma"
+  // Vercel/AWS Lambda runs on Amazon Linux (rhel-openssl-3.0.x). Local dev
+  // and Fly used debian-openssl-3.0.x ("native"). Include both so the
+  // generated client carries the matching query-engine binary for each.
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 generator dbml {
@@ -3158,4 +3166,24 @@ model WaitlistEntry {
   @@index([tenantId])
   @@index([serviceId, preferredDate, status])
   @@map("waitlist_entries")
+}
+
+/// Postgres-backed key-value store. Replaces Redis for cache,
+/// rate-limit counters, circuit-breaker state, dedup keys, and
+/// generally anything that used to live under RedisService. The
+/// `expiresAt` column emulates Redis TTL — readers ignore expired
+/// rows; a periodic Inngest sweep deletes them.
+///
+/// Schema is intentionally generic (one row = one key) so the
+/// existing RedisService interface (get/set/setex/del/exists/incr/
+/// expire) can stay stable across the swap.
+model CacheEntry {
+  key       String    @id @db.VarChar(512)
+  value     String    @db.Text
+  expiresAt DateTime? @map("expires_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([expiresAt])
+  @@map("cache_entries")
 }

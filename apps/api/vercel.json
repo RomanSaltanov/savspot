@@ -1,0 +1,15 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "node -e \"console.log('build skipped — dist/ pre-built externally')\"",
+  "installCommand": "node -e \"console.log('install skipped — node_modules supplied externally')\"",
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/api/index" }
+  ],
+  "functions": {
+    "api/index.js": {
+      "memory": 1024,
+      "maxDuration": 300,
+      "includeFiles": "{dist/**,src/generated/**,node_modules/google-auth-library/**,node_modules/gaxios/**,node_modules/gtoken/**,node_modules/googleapis-common/**,node_modules/google-logging-utils/**}"
+    }
+  }
+}
