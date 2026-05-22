@@ -26,6 +26,7 @@ import { CalendarModule } from './calendar/calendar.module';
 import { SmsModule } from './sms/sms.module';
 import { JobsModule } from './jobs/jobs.module';
 import { InngestModule } from './inngest/inngest.module';
+import { JobDispatcherModule } from './bullmq/job-dispatcher.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { BrowserPushModule } from './browser-push/browser-push.module';
 import { ClientPortalModule } from './client-portal/client-portal.module';
@@ -35,7 +36,6 @@ import { TeamModule } from './team/team.module';
 import { SupportModule } from './support/support.module';
 import { NotesModule } from './notes/notes.module';
 import { FeedbackModule } from './feedback/feedback.module';
-import { BullMqModule } from './bullmq/bullmq.module';
 import { EventsModule } from './events/events.module';
 import { TaxRatesModule } from './tax-rates/tax-rates.module';
 import { ConsentModule } from './consent/consent.module';
@@ -142,7 +142,6 @@ function getEeModules(): any[] {
     ]),
     PrismaModule,
     RedisModule,
-    BullMqModule,
     EventsModule,
     TenantContextModule,
     HealthModule,
@@ -160,6 +159,7 @@ function getEeModules(): any[] {
     CommunicationsModule,
     CalendarModule,
     SmsModule,
+    JobDispatcherModule,
     JobsModule,
     InngestModule,
     NotificationsModule,
