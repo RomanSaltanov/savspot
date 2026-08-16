@@ -82,6 +82,7 @@ COPY --from=builder /app/packages/shared/package.json ./packages/shared/package.
 COPY --from=deps /app/packages/ee/node_modules ./packages/ee/node_modules
 COPY --from=builder /app/packages/ee/dist ./packages/ee/dist
 COPY --from=builder /app/packages/ee/package.json ./packages/ee/package.json
+RUN mkdir -p /app/node_modules/@savspot && ln -s /app/packages/shared /app/node_modules/@savspot/shared && ln -s /app/packages/ee /app/node_modules/@savspot/ee
 
 # Copy compiled API output
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
@@ -96,7 +97,7 @@ COPY --from=builder /app/prisma/package.json ./prisma/package.json
 COPY --from=deps /app/prisma/node_modules ./prisma/node_modules
 
 # Copy generated Prisma client (custom output path)
-COPY --from=builder /app/prisma/generated ./prisma/generated
+COPY --from=builder /app/apps/api/src/generated/prisma ./apps/api/dist/generated/prisma
 
 # Create non-root user
 RUN addgroup --system --gid 1001 nodejs && \

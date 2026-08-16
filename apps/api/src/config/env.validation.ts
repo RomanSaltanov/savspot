@@ -90,10 +90,10 @@ export const envSchema = z.object({
     .optional(),
 
   // ---- Supabase (managed Postgres + Storage + Auth — see Phase 3 of the migration) ----
-  SUPABASE_URL: z
-    .string()
-    .url()
-    .optional(),
+  SUPABASE_URL: z.preprocess(
+    (value) => value === '' ? undefined : value,
+    z.string().url().optional(),
+  ),
 
   SUPABASE_SERVICE_ROLE_KEY: z
     .string()
@@ -273,9 +273,6 @@ export const envSchema = z.object({
       { key: 'ENCRYPTION_KEY', label: 'ENCRYPTION_KEY' },
       { key: 'MFA_ENCRYPTION_KEY', label: 'MFA_ENCRYPTION_KEY' },
       { key: 'WEBHOOK_ENCRYPTION_KEY', label: 'WEBHOOK_ENCRYPTION_KEY' },
-      { key: 'STRIPE_SECRET_KEY', label: 'STRIPE_SECRET_KEY' },
-      { key: 'STRIPE_WEBHOOK_SECRET', label: 'STRIPE_WEBHOOK_SECRET' },
-      { key: 'RESEND_API_KEY', label: 'RESEND_API_KEY' },
     ];
 
     for (const { key, label } of required) {

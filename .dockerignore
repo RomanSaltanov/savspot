@@ -13,4 +13,3 @@ specs
 *.spec.ts
 .vitest*
 playwright-report
-apps/web

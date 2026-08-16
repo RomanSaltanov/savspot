@@ -29,6 +29,8 @@ FROM node:22-alpine AS builder
 RUN corepack enable && corepack prepare pnpm@10.30.3 --activate
 
 WORKDIR /app
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
 COPY apps/web/package.json apps/web/
