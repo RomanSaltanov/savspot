@@ -62,6 +62,7 @@ services:
       PORT: "3001"
       DATABASE_URL: postgresql://${POSTGRES_USER:-savspot}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-savspot}?schema=public
       WEB_URL: ${WEB_URL:-http://localhost}
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN}
       JWT_PRIVATE_KEY_BASE64: ${JWT_PRIVATE_KEY_BASE64}
       JWT_PUBLIC_KEY_BASE64: ${JWT_PUBLIC_KEY_BASE64}
       JWT_ACCESS_EXPIRY: ${JWT_ACCESS_EXPIRY:-15m}
