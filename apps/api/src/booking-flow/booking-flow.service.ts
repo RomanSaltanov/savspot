@@ -14,6 +14,7 @@ interface ServiceForStepResolution {
   venueId: string | null;
   guestConfig: unknown;
   intakeFormConfig: unknown;
+  paymentMode: 'PAY_AT_VENUE' | 'FULL_ONLINE' | 'DEPOSIT_ONLINE';
   _count: { serviceAddons: number; serviceProviders: number };
 }
 
@@ -59,8 +60,12 @@ export class BookingFlowService {
       data: {
         ...(dto.stepOverrides !== undefined && { stepOverrides: dto.stepOverrides as object }),
         ...(dto.settings !== undefined && { settings: dto.settings as object }),
-        ...(dto.minBookingAdvanceDays !== undefined && { minBookingAdvanceDays: dto.minBookingAdvanceDays }),
-        ...(dto.maxBookingAdvanceDays !== undefined && { maxBookingAdvanceDays: dto.maxBookingAdvanceDays }),
+        ...(dto.minBookingAdvanceDays !== undefined && {
+          minBookingAdvanceDays: dto.minBookingAdvanceDays,
+        }),
+        ...(dto.maxBookingAdvanceDays !== undefined && {
+          maxBookingAdvanceDays: dto.maxBookingAdvanceDays,
+        }),
       },
     });
 
@@ -93,6 +98,7 @@ export class BookingFlowService {
         guestConfig: true,
         intakeFormConfig: true,
         basePrice: true,
+        paymentMode: true,
         _count: {
           select: {
             serviceAddons: { where: { isActive: true } },
@@ -183,7 +189,15 @@ export class BookingFlowService {
     steps.push({ type: 'DATE_TIME_PICKER', label: 'Select Date & Time', active: true });
     steps.push({ type: 'CLIENT_INFO', label: 'Contact Information', active: true });
     steps.push({ type: 'PRICING_SUMMARY', label: 'Pricing Summary', active: true });
-    steps.push({ type: 'PAYMENT', label: 'Payment', active: true, reason: 'If payment required' });
+    const hasOnlinePayments = services.some((service) => service.paymentMode !== 'PAY_AT_VENUE');
+    steps.push({
+      type: 'PAYMENT',
+      label: 'Payment',
+      active: hasOnlinePayments,
+      reason: hasOnlinePayments
+        ? 'At least one service requires online payment'
+        : 'All services are paid at the venue',
+    });
     steps.push({ type: 'CONFIRMATION', label: 'Confirmation', active: true });
 
     return steps;
@@ -218,7 +232,9 @@ export class BookingFlowService {
     steps.push({ type: 'DATE_TIME_PICKER', label: 'Select Date & Time', active: true });
     steps.push({ type: 'CLIENT_INFO', label: 'Contact Information', active: true });
     steps.push({ type: 'PRICING_SUMMARY', label: 'Pricing Summary', active: true });
-    steps.push({ type: 'PAYMENT', label: 'Payment', active: true });
+    if (service.paymentMode !== 'PAY_AT_VENUE') {
+      steps.push({ type: 'PAYMENT', label: 'Payment', active: true });
+    }
     steps.push({ type: 'CONFIRMATION', label: 'Confirmation', active: true });
 
     return steps;

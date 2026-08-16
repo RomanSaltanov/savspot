@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@/generated/prisma';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -7,12 +7,68 @@ import { UpdateServiceDto } from './dto/update-service.dto';
 
 const CACHE_TTL = 1800;
 
+type ServicePaymentMode = 'PAY_AT_VENUE' | 'FULL_ONLINE' | 'DEPOSIT_ONLINE';
+type DepositConfig = { type: 'PERCENTAGE' | 'FIXED'; amount: number };
+
+function validatePaymentConfiguration(
+  paymentMode: ServicePaymentMode,
+  basePrice: number,
+  rawDepositConfig: unknown,
+): DepositConfig | null {
+  if (paymentMode === 'PAY_AT_VENUE') return null;
+
+  if (basePrice <= 0) {
+    throw new BadRequestException('Online payment requires a service price greater than zero');
+  }
+
+  if (paymentMode === 'FULL_ONLINE') return null;
+
+  if (!rawDepositConfig || typeof rawDepositConfig !== 'object') {
+    throw new BadRequestException('Deposit amount is required for deposit payments');
+  }
+
+  const config = rawDepositConfig as Record<string, unknown>;
+  const type = config['type'];
+  const amount = config['amount'];
+
+  if ((type !== 'PERCENTAGE' && type !== 'FIXED') || typeof amount !== 'number') {
+    throw new BadRequestException('Deposit must have a valid type and numeric amount');
+  }
+
+  if (type === 'PERCENTAGE' && (amount <= 0 || amount >= 100)) {
+    throw new BadRequestException('Deposit percentage must be between 1 and 99');
+  }
+
+  if (type === 'FIXED' && (amount <= 0 || amount >= basePrice)) {
+    throw new BadRequestException(
+      'Fixed deposit must be greater than zero and less than the service price',
+    );
+  }
+
+  return { type, amount };
+}
+
 @Injectable()
 export class ServicesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
   ) {}
+
+  private async invalidateServiceCaches(tenantId: string, serviceId?: string) {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { slug: true },
+    });
+
+    const keys = [
+      `services:list:${tenantId}`,
+      ...(serviceId ? [`service:${tenantId}:${serviceId}`] : []),
+      ...(tenant ? [`public:tenant:${tenant.slug}`, `public:services:grouped:${tenant.slug}`] : []),
+    ];
+
+    await this.redis.del(...keys).catch(() => {});
+  }
 
   /**
    * List all active services for a tenant.
@@ -81,6 +137,13 @@ export class ServicesService {
    * Create a new service for a tenant.
    */
   async create(tenantId: string, dto: CreateServiceDto) {
+    const paymentMode = (dto.paymentMode ?? 'PAY_AT_VENUE') as ServicePaymentMode;
+    const depositConfig = validatePaymentConfiguration(
+      paymentMode,
+      dto.basePrice ?? 0,
+      dto.depositConfig,
+    );
+
     const result = await this.prisma.service.create({
       data: {
         tenantId,
@@ -90,9 +153,9 @@ export class ServicesService {
         basePrice: dto.basePrice ?? 0,
         currency: dto.currency,
         pricingModel: (dto.pricingModel as 'FIXED' | 'HOURLY' | 'TIERED' | 'CUSTOM') ?? 'FIXED',
+        paymentMode,
         confirmationMode:
-          (dto.confirmationMode as 'AUTO_CONFIRM' | 'MANUAL_APPROVAL') ??
-          'AUTO_CONFIRM',
+          (dto.confirmationMode as 'AUTO_CONFIRM' | 'MANUAL_APPROVAL') ?? 'AUTO_CONFIRM',
         categoryId: dto.categoryId,
         venueId: dto.venueId,
         bufferBeforeMinutes: dto.bufferBeforeMinutes ?? 0,
@@ -101,15 +164,9 @@ export class ServicesService {
         maxRescheduleCount: dto.maxRescheduleCount,
         noShowGraceMinutes: dto.noShowGraceMinutes,
         approvalDeadlineHours: dto.approvalDeadlineHours,
-        guestConfig: dto.guestConfig
-          ? (dto.guestConfig as Prisma.InputJsonValue)
-          : undefined,
-        tierConfig: dto.tierConfig
-          ? (dto.tierConfig as Prisma.InputJsonValue)
-          : undefined,
-        depositConfig: dto.depositConfig
-          ? (dto.depositConfig as Prisma.InputJsonValue)
-          : undefined,
+        guestConfig: dto.guestConfig ? (dto.guestConfig as Prisma.InputJsonValue) : undefined,
+        tierConfig: dto.tierConfig ? (dto.tierConfig as Prisma.InputJsonValue) : undefined,
+        depositConfig: depositConfig ? (depositConfig as Prisma.InputJsonValue) : undefined,
         intakeFormConfig: dto.intakeFormConfig
           ? (dto.intakeFormConfig as Prisma.InputJsonValue)
           : undefined,
@@ -128,7 +185,7 @@ export class ServicesService {
       },
     });
 
-    this.redis.del(`services:list:${tenantId}`).catch(() => {});
+    await this.invalidateServiceCaches(tenantId, result.id);
 
     return result;
   }
@@ -138,7 +195,15 @@ export class ServicesService {
    */
   async update(tenantId: string, id: string, dto: UpdateServiceDto) {
     // Verify the service exists and belongs to this tenant
-    await this.findById(tenantId, id);
+    const existing = await this.findById(tenantId, id);
+
+    const paymentMode = (dto.paymentMode ?? existing.paymentMode) as ServicePaymentMode;
+    const basePrice = dto.basePrice ?? Number(existing.basePrice);
+    const depositConfig = validatePaymentConfiguration(
+      paymentMode,
+      basePrice,
+      dto.depositConfig !== undefined ? dto.depositConfig : existing.depositConfig,
+    );
 
     const data: Prisma.ServiceUpdateInput = {};
 
@@ -150,6 +215,7 @@ export class ServicesService {
     if (dto.pricingModel !== undefined) {
       data.pricingModel = dto.pricingModel as 'FIXED' | 'HOURLY' | 'TIERED' | 'CUSTOM';
     }
+    data.paymentMode = paymentMode;
     if (dto.confirmationMode !== undefined) {
       data.confirmationMode = dto.confirmationMode as 'AUTO_CONFIRM' | 'MANUAL_APPROVAL';
     }
@@ -166,7 +232,8 @@ export class ServicesService {
     if (dto.autoCancelOnOverdue !== undefined) data.autoCancelOnOverdue = dto.autoCancelOnOverdue;
     if (dto.maxRescheduleCount !== undefined) data.maxRescheduleCount = dto.maxRescheduleCount;
     if (dto.noShowGraceMinutes !== undefined) data.noShowGraceMinutes = dto.noShowGraceMinutes;
-    if (dto.approvalDeadlineHours !== undefined) data.approvalDeadlineHours = dto.approvalDeadlineHours;
+    if (dto.approvalDeadlineHours !== undefined)
+      data.approvalDeadlineHours = dto.approvalDeadlineHours;
 
     if (dto.guestConfig !== undefined) {
       data.guestConfig = dto.guestConfig as Prisma.InputJsonValue;
@@ -174,9 +241,7 @@ export class ServicesService {
     if (dto.tierConfig !== undefined) {
       data.tierConfig = dto.tierConfig as Prisma.InputJsonValue;
     }
-    if (dto.depositConfig !== undefined) {
-      data.depositConfig = dto.depositConfig as Prisma.InputJsonValue;
-    }
+    data.depositConfig = depositConfig ? (depositConfig as Prisma.InputJsonValue) : Prisma.JsonNull;
     if (dto.intakeFormConfig !== undefined) {
       data.intakeFormConfig = dto.intakeFormConfig as Prisma.InputJsonValue;
     }
@@ -197,7 +262,7 @@ export class ServicesService {
       },
     });
 
-    this.redis.del(`services:list:${tenantId}`, `service:${tenantId}:${id}`).catch(() => {});
+    await this.invalidateServiceCaches(tenantId, id);
 
     return result;
   }
@@ -214,7 +279,7 @@ export class ServicesService {
       data: { isActive: false },
     });
 
-    this.redis.del(`services:list:${tenantId}`, `service:${tenantId}:${id}`).catch(() => {});
+    await this.invalidateServiceCaches(tenantId, id);
 
     return { message: 'Service deactivated successfully' };
   }
@@ -281,6 +346,7 @@ export class ServicesService {
         basePrice: original.basePrice,
         currency: original.currency,
         pricingModel: original.pricingModel,
+        paymentMode: original.paymentMode,
         confirmationMode: original.confirmationMode,
         categoryId: original.categoryId,
         venueId: original.venueId,
@@ -318,7 +384,7 @@ export class ServicesService {
       },
     });
 
-    this.redis.del(`services:list:${tenantId}`).catch(() => {});
+    await this.invalidateServiceCaches(tenantId, result.id);
 
     return result;
   }

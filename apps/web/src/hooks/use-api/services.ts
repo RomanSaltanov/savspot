@@ -11,6 +11,7 @@ interface Service {
   currency: string;
   isActive: boolean;
   pricingModel: string;
+  paymentMode: 'PAY_AT_VENUE' | 'FULL_ONLINE' | 'DEPOSIT_ONLINE';
   guestConfig: Record<string, unknown> | null;
   depositConfig: Record<string, unknown> | null;
   intakeFormConfig: Record<string, unknown> | null;
@@ -20,8 +21,7 @@ export function useServices() {
   const { tenantId } = useTenant();
   return useQuery({
     queryKey: queryKeys.services(tenantId ?? ''),
-    queryFn: () =>
-      apiClient.get<Service[]>(`/api/tenants/${tenantId}/services`),
+    queryFn: () => apiClient.get<Service[]>(`/api/tenants/${tenantId}/services`),
     enabled: !!tenantId,
   });
 }

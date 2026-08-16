@@ -4,7 +4,12 @@ import { useState, useMemo } from 'react';
 import { Clock, Users, CreditCard } from 'lucide-react';
 import { Button, Separator } from '@savspot/ui';
 import type { BookingSessionData } from './booking-types';
-import { formatPrice, formatDuration, formatTimeDisplay, formatDate } from '@/lib/booking-format-utils';
+import {
+  formatPrice,
+  formatDuration,
+  formatTimeDisplay,
+  formatDate,
+} from '@/lib/booking-format-utils';
 
 // ---------------------------------------------------------------------------
 // Props
@@ -51,11 +56,7 @@ export function PricingSummaryStep({
 
     // Per-guest pricing
     if (pricingModel === 'PER_GUEST' && guestCount) {
-      if (
-        guestConfig?.age_tiers &&
-        guestConfig.age_tiers.length > 0 &&
-        guestTierCounts
-      ) {
+      if (guestConfig?.age_tiers && guestConfig.age_tiers.length > 0 && guestTierCounts) {
         // Tier-based
         subtotal = 0;
         // Replace the base line item
@@ -101,8 +102,17 @@ export function PricingSummaryStep({
     // Use server-provided total if available, otherwise use calculated subtotal
     const total = sessionData.totalAmount ?? subtotal;
 
-    // Deposit calculation (if applicable from session data)
-    const depositAmount = sessionData.depositAmount ?? null;
+    // Deposit calculation for the customer-facing summary. The backend
+    // independently calculates the authoritative amount before charging.
+    let calculatedDeposit: number | null = null;
+    const depositConfig = sessionData.depositConfig;
+    if (sessionData.paymentMode === 'DEPOSIT_ONLINE' && depositConfig && depositConfig.amount > 0) {
+      calculatedDeposit =
+        depositConfig.type === 'PERCENTAGE'
+          ? Math.round(total * depositConfig.amount) / 100
+          : Math.min(depositConfig.amount, total);
+    }
+    const depositAmount = sessionData.depositAmount ?? calculatedDeposit;
 
     return { lineItems, subtotal: total, total, depositAmount };
   }, [sessionData]);
@@ -138,9 +148,7 @@ export function PricingSummaryStep({
       <div className="rounded-lg border">
         {/* Service & appointment info */}
         <div className="space-y-3 p-4">
-          <h3 className="font-semibold">
-            {sessionData.serviceName ?? 'Service'}
-          </h3>
+          <h3 className="font-semibold">{sessionData.serviceName ?? 'Service'}</h3>
 
           {sessionData.serviceDuration && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -154,8 +162,7 @@ export function PricingSummaryStep({
               <p className="font-medium">{formatDate(sessionData.date)}</p>
               <p className="text-muted-foreground">
                 {formatTimeDisplay(sessionData.startTime)}
-                {sessionData.endTime &&
-                  ` - ${formatTimeDisplay(sessionData.endTime)}`}
+                {sessionData.endTime && ` - ${formatTimeDisplay(sessionData.endTime)}`}
               </p>
             </div>
           )}
@@ -163,8 +170,7 @@ export function PricingSummaryStep({
           {sessionData.guestCount && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Users className="h-4 w-4" aria-hidden="true" />
-              {sessionData.guestCount}{' '}
-              {sessionData.guestCount === 1 ? 'guest' : 'guests'}
+              {sessionData.guestCount} {sessionData.guestCount === 1 ? 'guest' : 'guests'}
             </div>
           )}
         </div>
@@ -174,10 +180,7 @@ export function PricingSummaryStep({
         {/* Price breakdown */}
         <div className="space-y-2 p-4">
           {pricing.lineItems.map((item, index) => (
-            <div
-              key={index}
-              className="flex items-center justify-between text-sm"
-            >
+            <div key={index} className="flex items-center justify-between text-sm">
               <span className="text-muted-foreground">{item.label}</span>
               <span>{formatPrice(item.amount, currency)}</span>
             </div>
@@ -190,9 +193,7 @@ export function PricingSummaryStep({
         <div className="p-4">
           <div className="flex items-center justify-between">
             <span className="font-semibold">Total</span>
-            <span className="text-lg font-bold">
-              {formatPrice(pricing.total, currency)}
-            </span>
+            <span className="text-lg font-bold">{formatPrice(pricing.total, currency)}</span>
           </div>
 
           {pricing.depositAmount && pricing.depositAmount < pricing.total && (
@@ -201,9 +202,7 @@ export function PricingSummaryStep({
                 <CreditCard className="h-3.5 w-3.5" aria-hidden="true" />
                 Due now (deposit)
               </span>
-              <span className="font-medium">
-                {formatPrice(pricing.depositAmount, currency)}
-              </span>
+              <span className="font-medium">{formatPrice(pricing.depositAmount, currency)}</span>
             </div>
           )}
         </div>
@@ -217,12 +216,7 @@ export function PricingSummaryStep({
       )}
 
       {/* Continue button */}
-      <Button
-        className="mt-6 w-full"
-        size="lg"
-        disabled={isSubmitting}
-        onClick={handleContinue}
-      >
+      <Button className="mt-6 w-full" size="lg" disabled={isSubmitting} onClick={handleContinue}>
         {isSubmitting ? (
           <span className="inline-flex items-center gap-2">
             <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />

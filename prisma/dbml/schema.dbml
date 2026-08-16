@@ -495,6 +495,7 @@ Table services {
   basePrice Decimal [not null, default: 0]
   currency String [not null]
   pricingModel PricingModel [not null, default: 'FIXED']
+  paymentMode ServicePaymentMode [not null, default: 'PAY_AT_VENUE']
   isActive Boolean [not null, default: true]
   sortOrder Int [not null, default: 0]
   pricingUnit PricingUnit
@@ -1970,6 +1971,12 @@ Enum PaymentType {
   FULL_PAYMENT
   INSTALLMENT
   REFUND
+}
+
+Enum ServicePaymentMode {
+  PAY_AT_VENUE
+  FULL_ONLINE
+  DEPOSIT_ONLINE
 }
 
 Enum InvoiceStatus {

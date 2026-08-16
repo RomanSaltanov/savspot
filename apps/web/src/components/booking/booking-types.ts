@@ -31,11 +31,18 @@ export interface TenantService {
   basePrice: number;
   currency: string;
   pricingModel: string;
+  paymentMode?: 'PAY_AT_VENUE' | 'FULL_ONLINE' | 'DEPOSIT_ONLINE';
   imageUrl: string | null;
   guestConfig: GuestConfig | null;
+  depositConfig?: DepositConfig | null;
   addons?: ServiceAddon[];
   category?: { id: string; name: string } | null;
   peakHoursConfig?: PeakHoursConfig | null;
+}
+
+export interface DepositConfig {
+  type: 'PERCENTAGE' | 'FIXED';
+  amount: number;
 }
 
 export interface TenantData {
@@ -48,7 +55,13 @@ export interface TenantData {
   brandColor: string | null;
   timezone: string;
   currency: string;
-  address: { street?: string; city?: string; state?: string; zip?: string; country?: string } | null;
+  address: {
+    street?: string;
+    city?: string;
+    state?: string;
+    zip?: string;
+    country?: string;
+  } | null;
   contactEmail: string | null;
   contactPhone: string | null;
   category: string | null;
@@ -128,7 +141,9 @@ export interface BookingSessionData {
   servicePrice?: number;
   serviceCurrency?: string;
   servicePricingModel?: string;
+  paymentMode?: 'PAY_AT_VENUE' | 'FULL_ONLINE' | 'DEPOSIT_ONLINE';
   guestConfig?: GuestConfig | null;
+  depositConfig?: DepositConfig | null;
   date?: string;
   startTime?: string;
   endTime?: string;
@@ -173,5 +188,4 @@ export interface TimeSlot {
   endTime: string;
 }
 
-export const API_URL =
-  process.env['NEXT_PUBLIC_API_URL'] || 'http://localhost:3001';
+export const API_URL = process.env['NEXT_PUBLIC_API_URL'] || 'http://localhost:3001';

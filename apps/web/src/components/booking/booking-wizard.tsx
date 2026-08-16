@@ -61,25 +61,20 @@ export function BookingWizard({
   // -------------------------------------------------------------------------
 
   const updateSession = useCallback(
-    async (
-      updates: {
-        currentStep?: number;
-        data?: Partial<BookingSessionData>;
-        serviceId?: string;
-      },
-    ) => {
+    async (updates: {
+      currentStep?: number;
+      data?: Partial<BookingSessionData>;
+      serviceId?: string;
+    }) => {
       setIsTransitioning(true);
       setError(null);
 
       try {
-        const res = await fetch(
-          `${API_URL}/api/booking-sessions/${session.id}`,
-          {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(updates),
-          },
-        );
+        const res = await fetch(`${API_URL}/api/booking-sessions/${session.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updates),
+        });
 
         if (!res.ok) {
           const text = await res.text();
@@ -92,8 +87,7 @@ export function BookingWizard({
         onSessionUpdate(updated);
         return updated;
       } catch (err) {
-        const message =
-          err instanceof Error ? err.message : 'An unexpected error occurred';
+        const message = err instanceof Error ? err.message : 'An unexpected error occurred';
         setError(message);
         return null;
       } finally {
@@ -135,9 +129,7 @@ export function BookingWizard({
         // Persist the customer's final details while keeping the UI on the
         // current step. Only show confirmation after a real booking exists.
         const updated = await updateSession({
-          ...(dataUpdates
-            ? { data: { ...session.data, ...dataUpdates } }
-            : {}),
+          ...(dataUpdates ? { data: { ...session.data, ...dataUpdates } } : {}),
         });
 
         if (!updated) return;
@@ -146,10 +138,9 @@ export function BookingWizard({
         setError(null);
 
         try {
-          const res = await fetch(
-            `${API_URL}/api/booking-sessions/${session.id}/complete`,
-            { method: 'POST' },
-          );
+          const res = await fetch(`${API_URL}/api/booking-sessions/${session.id}/complete`, {
+            method: 'POST',
+          });
 
           if (!res.ok) {
             const text = await res.text();
@@ -162,8 +153,7 @@ export function BookingWizard({
             currentStep: nextStep,
           });
         } catch (err) {
-          const message =
-            err instanceof Error ? err.message : 'An unexpected error occurred';
+          const message = err instanceof Error ? err.message : 'An unexpected error occurred';
           setError(message);
         } finally {
           setIsTransitioning(false);
@@ -177,15 +167,7 @@ export function BookingWizard({
         ...(dataUpdates ? { data: { ...session.data, ...dataUpdates } } : {}),
       });
     },
-    [
-      currentStepIndex,
-      steps,
-      isPreview,
-      updateSession,
-      session.data,
-      session.id,
-      onSessionUpdate,
-    ],
+    [currentStepIndex, steps, isPreview, updateSession, session.data, session.id, onSessionUpdate],
   );
 
   const goToPrevStep = useCallback(async () => {
@@ -208,7 +190,19 @@ export function BookingWizard({
             currency={tenant.currency}
             sessionId={session.id}
             onSelect={async (serviceData) => {
-              await goToNextStep(serviceData);
+              const selectedServiceId = serviceData.serviceId;
+              if (!selectedServiceId) {
+                setError('Please select a service');
+                return;
+              }
+
+              // Selecting a service can change the required steps (notably
+              // online payment). Let the API re-resolve the flow for that
+              // exact service instead of advancing the generic flow.
+              await updateSession({
+                serviceId: selectedServiceId,
+                data: { ...session.data, ...serviceData },
+              });
             }}
           />
         );
@@ -275,9 +269,7 @@ export function BookingWizard({
           <QuestionnaireStep
             formConfig={formConfig}
             initialValues={
-              session.data.questionnaireResponses as
-                | Record<string, unknown>
-                | undefined
+              session.data.questionnaireResponses as Record<string, unknown> | undefined
             }
             onSubmit={async (responses) => {
               await goToNextStep({ questionnaireResponses: responses });
@@ -294,22 +286,16 @@ export function BookingWizard({
         return (
           <AddonSelectionStep
             addons={addons}
-            selectedAddonIds={
-              (session.data.selectedAddonIds as string[]) ?? []
-            }
+            selectedAddonIds={(session.data.selectedAddonIds as string[]) ?? []}
             onSubmit={async (selectedIds) => {
-              const selectedAddons = addons.filter((a) =>
-                selectedIds.includes(a.id),
-              );
+              const selectedAddons = addons.filter((a) => selectedIds.includes(a.id));
               await goToNextStep({
                 selectedAddonIds: selectedIds,
                 selectedAddons,
               });
             }}
             onBack={goToPrevStep}
-            currencyCode={
-              session.data.serviceCurrency ?? tenant.currency
-            }
+            currencyCode={session.data.serviceCurrency ?? tenant.currency}
           />
         );
       }
@@ -385,8 +371,7 @@ export function BookingWizard({
   // Price bar data
   // -------------------------------------------------------------------------
 
-  const serviceDuration =
-    session.data.serviceDuration ?? session.service?.durationMinutes ?? null;
+  const serviceDuration = session.data.serviceDuration ?? session.service?.durationMinutes ?? null;
 
   // -------------------------------------------------------------------------
   // Render
@@ -403,17 +388,15 @@ export function BookingWizard({
       )}
 
       {/* Progress bar (hide on confirmation) */}
-      {!isConfirmation && (
-        <BookingProgress
-          steps={steps}
-          currentStepIndex={currentStepIndex}
-        />
-      )}
+      {!isConfirmation && <BookingProgress steps={steps} currentStepIndex={currentStepIndex} />}
 
       {/* Error banner */}
       {error && (
         <FadeIn>
-          <div role="alert" className="mb-4 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3">
+          <div
+            role="alert"
+            className="mb-4 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3"
+          >
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-start gap-3">
                 <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-destructive/15">

@@ -22,11 +22,7 @@ interface ServiceSelectionStepProps {
 // Component
 // ---------------------------------------------------------------------------
 
-export function ServiceSelectionStep({
-  services,
-  currency,
-  onSelect,
-}: ServiceSelectionStepProps) {
+export function ServiceSelectionStep({ services, currency, onSelect }: ServiceSelectionStepProps) {
   const [selectingId, setSelectingId] = useState<string | null>(null);
 
   const handleSelect = async (service: TenantService) => {
@@ -39,7 +35,9 @@ export function ServiceSelectionStep({
         servicePrice: service.basePrice,
         serviceCurrency: service.currency || currency,
         servicePricingModel: service.pricingModel,
+        paymentMode: service.paymentMode ?? 'PAY_AT_VENUE',
         guestConfig: service.guestConfig,
+        depositConfig: service.depositConfig,
       });
     } finally {
       setSelectingId(null);
@@ -67,9 +65,7 @@ export function ServiceSelectionStep({
               aria-label={`${service.name}, ${formatDuration(service.durationMinutes)}, ${formatPrice(service.basePrice, displayCurrency)}`}
               aria-busy={isSelecting}
               className={`cursor-pointer transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 ${
-                isSelecting
-                  ? 'border-primary ring-2 ring-primary/20'
-                  : 'hover:border-primary/50'
+                isSelecting ? 'border-primary ring-2 ring-primary/20' : 'hover:border-primary/50'
               } ${selectingId && !isSelecting ? 'pointer-events-none opacity-50' : ''}`}
               onClick={() => !selectingId && handleSelect(service)}
               onKeyDown={(e) => {
@@ -116,8 +112,7 @@ export function ServiceSelectionStep({
                 </Badge>
                 {service.guestConfig && (
                   <Badge variant="secondary" className="text-xs">
-                    {service.guestConfig.min_guests}-
-                    {service.guestConfig.max_guests} guests
+                    {service.guestConfig.min_guests}-{service.guestConfig.max_guests} guests
                   </Badge>
                 )}
               </CardContent>

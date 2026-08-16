@@ -6,7 +6,22 @@ import { Controller, useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { ChevronLeft, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
-import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Label, Textarea, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@savspot/ui';
+import {
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Input,
+  Label,
+  Textarea,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@savspot/ui';
 import { apiClient } from '@/lib/api-client';
 import { ROUTES } from '@/lib/constants';
 import { useTenant } from '@/hooks/use-tenant';
@@ -16,31 +31,60 @@ const ZERO_DECIMAL_CURRENCIES = new Set(['JPY', 'KRW', 'VND']);
 
 function getCurrencySymbol(currency: string): string {
   const symbols: Record<string, string> = {
-    USD: '$', EUR: '\u20AC', GBP: '\u00A3', CAD: 'CA$', AUD: 'A$', JPY: '\u00A5',
+    USD: '$',
+    EUR: '\u20AC',
+    GBP: '\u00A3',
+    CAD: 'CA$',
+    AUD: 'A$',
+    JPY: '\u00A5',
   };
   return symbols[currency] ?? currency;
 }
 
-const serviceSchema = z.object({
-  name: z.string().min(2, 'Service name must be at least 2 characters'),
-  description: z.string().optional(),
-  durationMinutes: z.coerce
-    .number()
-    .min(5, 'Duration must be at least 5 minutes')
-    .max(480, 'Duration must be at most 8 hours'),
-  basePrice: z.coerce
-    .number()
-    .min(0, 'Price cannot be negative'),
-  currency: z.string().min(3).max(3),
-  pricingModel: z.string().min(1, 'Pricing model is required'),
-  confirmationMode: z.string().min(1, 'Confirmation mode is required'),
-  bufferBeforeMinutes: z.coerce.number().min(0).optional(),
-  bufferAfterMinutes: z.coerce.number().min(0).optional(),
-  guestConfigJson: z.string().optional(),
-  tierConfigJson: z.string().optional(),
-  depositConfigJson: z.string().optional(),
-  cancellationPolicyJson: z.string().optional(),
-});
+const serviceSchema = z
+  .object({
+    name: z.string().min(2, 'Service name must be at least 2 characters'),
+    description: z.string().optional(),
+    durationMinutes: z.coerce
+      .number()
+      .min(5, 'Duration must be at least 5 minutes')
+      .max(480, 'Duration must be at most 8 hours'),
+    basePrice: z.coerce.number().min(0, 'Price cannot be negative'),
+    currency: z.string().min(3).max(3),
+    pricingModel: z.string().min(1, 'Pricing model is required'),
+    paymentMode: z.enum(['PAY_AT_VENUE', 'FULL_ONLINE', 'DEPOSIT_ONLINE']),
+    depositType: z.enum(['PERCENTAGE', 'FIXED']),
+    depositAmount: z.coerce.number().optional(),
+    confirmationMode: z.string().min(1, 'Confirmation mode is required'),
+    bufferBeforeMinutes: z.coerce.number().min(0).optional(),
+    bufferAfterMinutes: z.coerce.number().min(0).optional(),
+    guestConfigJson: z.string().optional(),
+    tierConfigJson: z.string().optional(),
+    cancellationPolicyJson: z.string().optional(),
+  })
+  .superRefine((values, ctx) => {
+    if (values.paymentMode !== 'DEPOSIT_ONLINE') return;
+
+    if (!values.depositAmount || values.depositAmount <= 0) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['depositAmount'],
+        message: 'Deposit amount must be greater than zero',
+      });
+    } else if (values.depositType === 'PERCENTAGE' && values.depositAmount >= 100) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['depositAmount'],
+        message: 'Deposit percentage must be less than 100',
+      });
+    } else if (values.depositType === 'FIXED' && values.depositAmount >= values.basePrice) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['depositAmount'],
+        message: 'Fixed deposit must be less than the service price',
+      });
+    }
+  });
 
 type ServiceFormValues = z.infer<typeof serviceSchema>;
 
@@ -64,17 +108,21 @@ export default function NewServicePage() {
       basePrice: 0,
       currency: 'USD',
       pricingModel: 'FIXED',
+      paymentMode: 'PAY_AT_VENUE',
+      depositType: 'PERCENTAGE',
+      depositAmount: 50,
       confirmationMode: 'AUTO_CONFIRM',
       bufferBeforeMinutes: 0,
       bufferAfterMinutes: 0,
       guestConfigJson: '',
       tierConfigJson: '',
-      depositConfigJson: '',
       cancellationPolicyJson: '',
     },
   });
 
   const selectedCurrency = useWatch({ control, name: 'currency' }) ?? 'USD';
+  const paymentMode = useWatch({ control, name: 'paymentMode' });
+  const depositType = useWatch({ control, name: 'depositType' });
   const isZeroDecimal = ZERO_DECIMAL_CURRENCIES.has(selectedCurrency);
   const currencySymbol = getCurrencySymbol(selectedCurrency);
 
@@ -90,6 +138,7 @@ export default function NewServicePage() {
         basePrice: values.basePrice,
         currency: values.currency,
         pricingModel: values.pricingModel,
+        paymentMode: values.paymentMode,
         confirmationMode: values.confirmationMode,
       };
 
@@ -117,19 +166,15 @@ export default function NewServicePage() {
           return;
         }
       }
-      if (values.depositConfigJson?.trim()) {
-        try {
-          payload['depositConfig'] = JSON.parse(values.depositConfigJson);
-        } catch {
-          setError('Deposit config is not valid JSON');
-          return;
-        }
+      if (values.paymentMode === 'DEPOSIT_ONLINE') {
+        payload['depositConfig'] = {
+          type: values.depositType,
+          amount: values.depositAmount,
+        };
       }
       if (values.cancellationPolicyJson?.trim()) {
         try {
-          payload['cancellationPolicy'] = JSON.parse(
-            values.cancellationPolicyJson,
-          );
+          payload['cancellationPolicy'] = JSON.parse(values.cancellationPolicyJson);
         } catch {
           setError('Cancellation policy is not valid JSON');
           return;
@@ -139,11 +184,7 @@ export default function NewServicePage() {
       await apiClient.post(`/api/tenants/${tenantId}/services`, payload);
       router.push(ROUTES.SERVICES);
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'Failed to create service. Please try again.',
-      );
+      setError(err instanceof Error ? err.message : 'Failed to create service. Please try again.');
     }
   };
 
@@ -156,9 +197,7 @@ export default function NewServicePage() {
         </Button>
         <div>
           <h2 className="text-lg font-semibold">Create Service</h2>
-          <p className="text-sm text-muted-foreground">
-            Add a new service that clients can book
-          </p>
+          <p className="text-sm text-muted-foreground">Add a new service that clients can book</p>
         </div>
       </div>
 
@@ -172,23 +211,13 @@ export default function NewServicePage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Basic Information</CardTitle>
-            <CardDescription>
-              Set up the essential details for this service.
-            </CardDescription>
+            <CardDescription>Set up the essential details for this service.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="name">Service Name *</Label>
-              <Input
-                id="name"
-                placeholder="e.g., Standard Haircut"
-                {...register('name')}
-              />
-              {errors.name && (
-                <p className="text-sm text-destructive">
-                  {errors.name.message}
-                </p>
-              )}
+              <Input id="name" placeholder="e.g., Standard Haircut" {...register('name')} />
+              {errors.name && <p className="text-sm text-destructive">{errors.name.message}</p>}
             </div>
 
             <div className="space-y-2">
@@ -212,9 +241,7 @@ export default function NewServicePage() {
                   {...register('durationMinutes')}
                 />
                 {errors.durationMinutes && (
-                  <p className="text-sm text-destructive">
-                    {errors.durationMinutes.message}
-                  </p>
+                  <p className="text-sm text-destructive">{errors.durationMinutes.message}</p>
                 )}
               </div>
 
@@ -229,9 +256,7 @@ export default function NewServicePage() {
                   {...register('basePrice')}
                 />
                 {errors.basePrice && (
-                  <p className="text-sm text-destructive">
-                    {errors.basePrice.message}
-                  </p>
+                  <p className="text-sm text-destructive">{errors.basePrice.message}</p>
                 )}
               </div>
             </div>
@@ -280,9 +305,7 @@ export default function NewServicePage() {
                   )}
                 />
                 {errors.pricingModel && (
-                  <p className="text-sm text-destructive">
-                    {errors.pricingModel.message}
-                  </p>
+                  <p className="text-sm text-destructive">{errors.pricingModel.message}</p>
                 )}
               </div>
 
@@ -304,11 +327,74 @@ export default function NewServicePage() {
                   )}
                 />
                 {errors.confirmationMode && (
-                  <p className="text-sm text-destructive">
-                    {errors.confirmationMode.message}
-                  </p>
+                  <p className="text-sm text-destructive">{errors.confirmationMode.message}</p>
                 )}
               </div>
+            </div>
+
+            <div className="space-y-3 rounded-lg border p-4">
+              <div>
+                <Label htmlFor="paymentMode">Customer Payment *</Label>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Choose when the customer pays for this service.
+                </p>
+              </div>
+              <Controller
+                control={control}
+                name="paymentMode"
+                render={({ field }) => (
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <SelectTrigger id="paymentMode" className="w-full">
+                      <SelectValue placeholder="Select payment mode" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="PAY_AT_VENUE">Pay at the salon</SelectItem>
+                      <SelectItem value="FULL_ONLINE">Pay full amount online</SelectItem>
+                      <SelectItem value="DEPOSIT_ONLINE">Pay a deposit online</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+
+              {paymentMode === 'DEPOSIT_ONLINE' && (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="depositType">Deposit Type</Label>
+                    <Controller
+                      control={control}
+                      name="depositType"
+                      render={({ field }) => (
+                        <Select value={field.value} onValueChange={field.onChange}>
+                          <SelectTrigger id="depositType" className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="PERCENTAGE">Percentage</SelectItem>
+                            <SelectItem value="FIXED">Fixed amount</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      )}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="depositAmount">
+                      {depositType === 'PERCENTAGE'
+                        ? 'Deposit (%)'
+                        : `Deposit (${selectedCurrency})`}
+                    </Label>
+                    <Input
+                      id="depositAmount"
+                      type="number"
+                      min={depositType === 'PERCENTAGE' ? 1 : 0.01}
+                      step={depositType === 'PERCENTAGE' ? 1 : 0.01}
+                      {...register('depositAmount')}
+                    />
+                    {errors.depositAmount && (
+                      <p className="text-sm text-destructive">{errors.depositAmount.message}</p>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -324,8 +410,7 @@ export default function NewServicePage() {
               <div className="text-left">
                 <CardTitle className="text-base">Advanced Settings</CardTitle>
                 <CardDescription>
-                  Buffer times, guest config, tiers, deposits, and cancellation
-                  policies.
+                  Buffer times, guest config, tiers, deposits, and cancellation policies.
                 </CardDescription>
               </div>
               {showAdvanced ? (
@@ -339,9 +424,7 @@ export default function NewServicePage() {
             <CardContent className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="bufferBeforeMinutes">
-                    Buffer Before (minutes)
-                  </Label>
+                  <Label htmlFor="bufferBeforeMinutes">Buffer Before (minutes)</Label>
                   <Input
                     id="bufferBeforeMinutes"
                     type="number"
@@ -386,22 +469,7 @@ export default function NewServicePage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="depositConfigJson">
-                  Deposit Config (JSON)
-                </Label>
-                <Textarea
-                  id="depositConfigJson"
-                  placeholder='e.g., {"required": true, "percentageOrCents": 50, "type": "PERCENTAGE"}'
-                  rows={2}
-                  className="font-mono text-xs"
-                  {...register('depositConfigJson')}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="cancellationPolicyJson">
-                  Cancellation Policy (JSON)
-                </Label>
+                <Label htmlFor="cancellationPolicyJson">Cancellation Policy (JSON)</Label>
                 <Textarea
                   id="cancellationPolicyJson"
                   placeholder='e.g., {"freeCancellationHours": 24, "penaltyPercentage": 50}'
@@ -415,11 +483,7 @@ export default function NewServicePage() {
         </Card>
 
         <div className="flex justify-end gap-3">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => router.push(ROUTES.SERVICES)}
-          >
+          <Button type="button" variant="outline" onClick={() => router.push(ROUTES.SERVICES)}>
             Cancel
           </Button>
           <Button type="submit" disabled={isSubmitting}>

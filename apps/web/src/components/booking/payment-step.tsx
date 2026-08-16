@@ -1,12 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import {
-  Elements,
-  PaymentElement,
-  useStripe,
-  useElements,
-} from '@stripe/react-stripe-js';
+import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { loadStripe } from '@stripe/stripe-js';
 import type { StripeElementsOptions } from '@stripe/stripe-js';
 import { Lock, Loader2, AlertCircle } from 'lucide-react';
@@ -19,12 +14,9 @@ import { formatPrice } from '@/lib/booking-format-utils';
 // Stripe singleton (loaded once per page)
 // ---------------------------------------------------------------------------
 
-const stripePublishableKey =
-  process.env['NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY'] ?? '';
+const stripePublishableKey = process.env['NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY'] ?? '';
 
-const stripePromise = stripePublishableKey
-  ? loadStripe(stripePublishableKey)
-  : null;
+const stripePromise = stripePublishableKey ? loadStripe(stripePublishableKey) : null;
 
 // ---------------------------------------------------------------------------
 // Props
@@ -74,9 +66,7 @@ function CheckoutForm({
       });
 
       if (error) {
-        setErrorMessage(
-          error.message ?? 'Payment failed. Please try again.',
-        );
+        setErrorMessage(error.message ?? 'Payment failed. Please try again.');
         setIsProcessing(false);
       } else {
         // Payment succeeded — advance to confirmation
@@ -95,18 +85,16 @@ function CheckoutForm({
       />
 
       {errorMessage && (
-        <div role="alert" className="mt-4 flex items-start gap-2 rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        <div
+          role="alert"
+          className="mt-4 flex items-start gap-2 rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
           {errorMessage}
         </div>
       )}
 
-      <Button
-        type="submit"
-        className="mt-6 w-full"
-        size="lg"
-        disabled={!stripe || isProcessing}
-      >
+      <Button type="submit" className="mt-6 w-full" size="lg" disabled={!stripe || isProcessing}>
         {isProcessing ? (
           <>
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -141,23 +129,20 @@ export function PaymentStep({
   const chargeAmount = deposit && deposit < total ? deposit : total;
 
   const [clientSecret, setClientSecret] = useState<string | null>(null);
-  const [loading, setLoading] = useState(!isPreview);
+  const [loading, setLoading] = useState(!isPreview && !!stripePromise);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (isPreview) return;
+    if (isPreview || !stripePromise) return;
 
     let cancelled = false;
 
     async function createPaymentIntent() {
       try {
-        const res = await fetch(
-          `${API_URL}/api/booking-sessions/${sessionId}/pay`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-          },
-        );
+        const res = await fetch(`${API_URL}/api/booking-sessions/${sessionId}/pay`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
 
         if (!res.ok) {
           const text = await res.text();
@@ -174,9 +159,7 @@ export function PaymentStep({
         }
       } catch (err) {
         if (!cancelled) {
-          setError(
-            err instanceof Error ? err.message : 'Payment initialization failed',
-          );
+          setError(err instanceof Error ? err.message : 'Payment initialization failed');
           setLoading(false);
         }
       }
@@ -202,9 +185,7 @@ export function PaymentStep({
           <p className="text-sm text-muted-foreground">
             {deposit && deposit < total ? 'Deposit due now' : 'Amount due'}
           </p>
-          <p className="mt-1 text-2xl font-bold">
-            {formatPrice(chargeAmount, currency)}
-          </p>
+          <p className="mt-1 text-2xl font-bold">{formatPrice(chargeAmount, currency)}</p>
         </div>
 
         {/* Mock payment form */}
@@ -272,16 +253,16 @@ export function PaymentStep({
           <p className="text-sm text-muted-foreground">
             {deposit && deposit < total ? 'Deposit due now' : 'Amount due'}
           </p>
-          <p className="mt-1 text-2xl font-bold">
-            {formatPrice(chargeAmount, currency)}
-          </p>
+          <p className="mt-1 text-2xl font-bold">{formatPrice(chargeAmount, currency)}</p>
         </div>
 
-        <div className="flex flex-col items-center gap-4 rounded-lg border p-8" role="status" aria-live="polite">
+        <div
+          className="flex flex-col items-center gap-4 rounded-lg border p-8"
+          role="status"
+          aria-live="polite"
+        >
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" aria-hidden="true" />
-          <p className="text-sm text-muted-foreground">
-            Preparing payment form...
-          </p>
+          <p className="text-sm text-muted-foreground">Preparing payment form...</p>
         </div>
       </div>
     );
@@ -335,13 +316,10 @@ export function PaymentStep({
         <p className="text-sm text-muted-foreground">
           {deposit && deposit < total ? 'Deposit due now' : 'Amount due'}
         </p>
-        <p className="mt-1 text-2xl font-bold">
-          {formatPrice(chargeAmount, currency)}
-        </p>
+        <p className="mt-1 text-2xl font-bold">{formatPrice(chargeAmount, currency)}</p>
         {deposit && deposit < total && (
           <p className="mt-1 text-xs text-muted-foreground">
-            Remaining {formatPrice(total - deposit, currency)} due at
-            appointment
+            Remaining {formatPrice(total - deposit, currency)} due at appointment
           </p>
         )}
       </div>

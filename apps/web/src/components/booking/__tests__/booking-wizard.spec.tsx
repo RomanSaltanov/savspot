@@ -18,13 +18,37 @@ vi.mock('@/components/ui/motion', () => ({
 
 vi.mock('../booking-progress', () => ({ BookingProgress: () => null }));
 vi.mock('../booking-price-bar', () => ({ BookingPriceBar: () => null }));
-vi.mock('../service-selection-step', () => ({ ServiceSelectionStep: () => null }));
+vi.mock('../service-selection-step', () => ({
+  ServiceSelectionStep: ({
+    onSelect,
+  }: {
+    onSelect: (data: { serviceId: string; paymentMode: string }) => Promise<void>;
+  }) => (
+    <button
+      type="button"
+      onClick={() =>
+        void onSelect({
+          serviceId: 'service-online',
+          paymentMode: 'FULL_ONLINE',
+        })
+      }
+    >
+      Select online service
+    </button>
+  ),
+}));
 vi.mock('../date-time-picker-step', () => ({ DateTimePickerStep: () => null }));
 vi.mock('../guest-count-step', () => ({ GuestCountStep: () => null }));
 vi.mock('../questionnaire-step', () => ({ QuestionnaireStep: () => null }));
 vi.mock('../addon-selection-step', () => ({ AddonSelectionStep: () => null }));
 vi.mock('../pricing-summary-step', () => ({ PricingSummaryStep: () => null }));
-vi.mock('../payment-step', () => ({ PaymentStep: () => null }));
+vi.mock('../payment-step', () => ({
+  PaymentStep: ({ onPaymentComplete }: { onPaymentComplete: () => Promise<void> }) => (
+    <button type="button" onClick={() => void onPaymentComplete()}>
+      Complete payment
+    </button>
+  ),
+}));
 vi.mock('../staff-selection-step', () => ({ StaffSelectionStep: () => null }));
 vi.mock('../guest-info-step', () => ({
   GuestInfoStep: ({
@@ -79,8 +103,14 @@ const initialSession: BookingSession = {
   ],
 };
 
-function BookingWizardHarness({ isPreview = false }: { isPreview?: boolean }) {
-  const [session, setSession] = useState(initialSession);
+function BookingWizardHarness({
+  isPreview = false,
+  initial = initialSession,
+}: {
+  isPreview?: boolean;
+  initial?: BookingSession;
+}) {
+  const [session, setSession] = useState(initial);
 
   return (
     <BookingWizard
@@ -164,5 +194,77 @@ describe('BookingWizard completion', () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     expect(String(fetchMock.mock.calls[0]?.[0])).not.toContain('/complete');
     expect(await screen.findByText('Booking confirmed')).toBeInTheDocument();
+  });
+
+  it('does not use the unpaid completion endpoint when payment is required', async () => {
+    const paymentSession: BookingSession = {
+      ...initialSession,
+      resolvedSteps: [
+        { type: 'CLIENT_INFO', label: 'Your Details', order: 0 },
+        { type: 'PAYMENT', label: 'Payment', order: 1 },
+        { type: 'CONFIRMATION', label: 'Confirmation', order: 2 },
+      ],
+    };
+
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: { ...paymentSession, currentStep: 1 },
+        }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: { ...paymentSession, currentStep: 2 },
+        }),
+      } as Response);
+
+    render(<BookingWizardHarness initial={paymentSession} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Submit details' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Complete payment' }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(fetchMock.mock.calls.every(([url]) => !String(url).endsWith('/complete'))).toBe(true);
+    expect(await screen.findByText('Booking confirmed')).toBeInTheDocument();
+  });
+
+  it('re-resolves the flow after selecting a service with its payment mode', async () => {
+    const selectionSession: BookingSession = {
+      ...initialSession,
+      serviceId: null,
+      resolvedSteps: [{ type: 'SERVICE_SELECTION', label: 'Service', order: 0 }],
+    };
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        data: {
+          ...selectionSession,
+          serviceId: 'service-online',
+          data: {
+            serviceId: 'service-online',
+            paymentMode: 'FULL_ONLINE',
+          },
+          resolvedSteps: [
+            { type: 'DATE_TIME_PICKER', label: 'Date', order: 0 },
+            { type: 'PAYMENT', label: 'Payment', order: 1 },
+            { type: 'CONFIRMATION', label: 'Confirmation', order: 2 },
+          ],
+        },
+      }),
+    } as Response);
+
+    render(<BookingWizardHarness initial={selectionSession} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Select online service' }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body))).toEqual({
+      serviceId: 'service-online',
+      data: {
+        serviceId: 'service-online',
+        paymentMode: 'FULL_ONLINE',
+      },
+    });
   });
 });

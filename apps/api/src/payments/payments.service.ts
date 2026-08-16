@@ -1,9 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-  BadRequestException,
-  Logger,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { BookingSource, BookingStatus, PaymentStatus, Prisma } from '@/generated/prisma';
 import { PrismaService } from '../prisma/prisma.service';
@@ -20,6 +15,33 @@ export class PaymentsService {
     private readonly stripeProvider: StripeProvider,
     private readonly eventsService: EventsService,
   ) {}
+
+  /**
+   * Fail before creating a pending booking when online payments are not ready.
+   */
+  async assertOnlinePaymentReady(tenantId: string): Promise<void> {
+    if (!this.configService.get<string>('stripe.secretKey')) {
+      throw new BadRequestException('Online payments are not configured for this business yet');
+    }
+
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: {
+        paymentProvider: true,
+        paymentProviderAccountId: true,
+        paymentProviderOnboarded: true,
+      },
+    });
+
+    if (
+      !tenant ||
+      tenant.paymentProvider !== 'STRIPE' ||
+      !tenant.paymentProviderOnboarded ||
+      !tenant.paymentProviderAccountId
+    ) {
+      throw new BadRequestException('Online payments are not configured for this business yet');
+    }
+  }
 
   /**
    * Create a Payment record for a booking.
@@ -73,8 +95,7 @@ export class PaymentsService {
 
     let depositAmount: number;
     if (depositConfig.type === 'PERCENTAGE') {
-      depositAmount =
-        Math.round(((totalAmount * depositConfig.amount) / 100) * 100) / 100;
+      depositAmount = Math.round(((totalAmount * depositConfig.amount) / 100) * 100) / 100;
     } else {
       depositAmount = Math.min(depositConfig.amount, totalAmount);
     }
@@ -122,10 +143,7 @@ export class PaymentsService {
     // Not first platform booking — no commission
     if (priorBooking) return null;
 
-    const commissionPercent = this.configService.get<number>(
-      'referral_commission_percent',
-      20,
-    );
+    const commissionPercent = this.configService.get<number>('referral_commission_percent', 20);
     const commissionCapCents = this.configService.get<number>(
       'referral_commission_cap_cents',
       50000,
@@ -145,11 +163,7 @@ export class PaymentsService {
    * Applies deposit config and referral commission where applicable.
    * Returns the client_secret for frontend confirmation.
    */
-  async processPaymentIntent(
-    tenantId: string,
-    bookingId: string,
-    sessionId: string,
-  ) {
+  async processPaymentIntent(tenantId: string, bookingId: string, sessionId: string) {
     // Load the booking with service (including depositConfig) and tenant info.
     // `client` is included so we can find-or-create a Stripe Customer with
     // their email for saved-card support on future bookings.
@@ -159,6 +173,7 @@ export class PaymentsService {
         service: {
           select: {
             id: true,
+            paymentMode: true,
             depositConfig: true,
           },
         },
@@ -195,10 +210,13 @@ export class PaymentsService {
     }
 
     // Resolve deposit vs full payment
-    const depositConfig = booking.service?.depositConfig as {
-      type: 'PERCENTAGE' | 'FIXED';
-      amount: number;
-    } | null;
+    const depositConfig =
+      booking.service?.paymentMode === 'DEPOSIT_ONLINE'
+        ? (booking.service.depositConfig as {
+            type: 'PERCENTAGE' | 'FIXED';
+            amount: number;
+          } | null)
+        : null;
     const { paymentType, amount: chargeAmount } = this.resolvePaymentAmount(
       totalAmount,
       depositConfig,
@@ -206,13 +224,8 @@ export class PaymentsService {
     const chargeAmountCents = Math.round(chargeAmount * 100);
 
     // Calculate platform processing fee on the charge amount
-    const platformFeePercent = this.configService.get<number>(
-      'stripe.platformFeePercent',
-      1,
-    );
-    const processingFeeCents = Math.round(
-      (chargeAmountCents * platformFeePercent) / 100,
-    );
+    const platformFeePercent = this.configService.get<number>('stripe.platformFeePercent', 1);
+    const processingFeeCents = Math.round((chargeAmountCents * platformFeePercent) / 100);
     const platformFeeDollars = processingFeeCents / 100;
 
     // Calculate referral commission (on total booking amount, not deposit)
@@ -234,8 +247,7 @@ export class PaymentsService {
     // intent when the uncapped fee would exceed the charge (can happen on
     // deposit payments where referral commission is calculated on the full
     // booking total but deducted from a smaller deposit charge).
-    const uncappedPlatformFee =
-      processingFeeCents + (referralCommissionCents ?? 0);
+    const uncappedPlatformFee = processingFeeCents + (referralCommissionCents ?? 0);
     const maxAllowedFee = Math.max(0, chargeAmountCents - 1);
     const totalPlatformFee = Math.min(uncappedPlatformFee, maxAllowedFee);
 
@@ -365,17 +377,13 @@ export class PaymentsService {
       const lockedPayment = payments[0];
 
       if (!lockedPayment) {
-        this.logger.warn(
-          `Payment not found for provider ID: ${providerPaymentId}`,
-        );
+        this.logger.warn(`Payment not found for provider ID: ${providerPaymentId}`);
         return null;
       }
 
       // Idempotency: already succeeded
       if (lockedPayment.status === 'SUCCEEDED') {
-        this.logger.log(
-          `Payment ${lockedPayment.id} already succeeded — skipping duplicate`,
-        );
+        this.logger.log(`Payment ${lockedPayment.id} already succeeded — skipping duplicate`);
         return null;
       }
 
@@ -427,6 +435,27 @@ export class PaymentsService {
         });
       }
 
+      const paymentMetadata = payment.metadata as Record<string, unknown> | null;
+      const sessionId = paymentMetadata?.['sessionId'];
+      if (typeof sessionId === 'string') {
+        await tx.bookingSession.updateMany({
+          where: {
+            id: sessionId,
+            tenantId: payment.tenantId,
+            status: 'IN_PROGRESS',
+          },
+          data: { status: 'COMPLETED' },
+        });
+        await tx.dateReservation.updateMany({
+          where: {
+            sessionId,
+            tenantId: payment.tenantId,
+            status: 'HELD',
+          },
+          data: { status: 'CONFIRMED' },
+        });
+      }
+
       return { payment, previousStatus, shouldConfirmBooking };
     });
 
@@ -472,9 +501,7 @@ export class PaymentsService {
       }
     }
 
-    this.logger.log(
-      `Payment ${payment.id} succeeded for booking ${payment.bookingId}`,
-    );
+    this.logger.log(`Payment ${payment.id} succeeded for booking ${payment.bookingId}`);
   }
 
   /**
@@ -504,9 +531,7 @@ export class PaymentsService {
 
       const locked = rows[0];
       if (!locked) {
-        this.logger.warn(
-          `Payment not found for provider ID: ${providerPaymentId}`,
-        );
+        this.logger.warn(`Payment not found for provider ID: ${providerPaymentId}`);
         return null;
       }
 
@@ -597,10 +622,7 @@ export class PaymentsService {
    * an explicit reason. If this distinction becomes important we can add
    * CANCELLED via migration later — in both Prisma and @savspot/shared.
    */
-  async handlePaymentCancellation(
-    providerPaymentId: string,
-    reason?: string,
-  ) {
+  async handlePaymentCancellation(providerPaymentId: string, reason?: string) {
     await this.handlePaymentFailure(
       providerPaymentId,
       reason ?? 'Payment canceled (PaymentIntent canceled)',
@@ -635,18 +657,11 @@ export class PaymentsService {
     if (!payment) {
       throw new NotFoundException('Payment not found');
     }
-    if (
-      payment.status !== 'SUCCEEDED' &&
-      payment.status !== 'PARTIALLY_REFUNDED'
-    ) {
-      throw new BadRequestException(
-        `Cannot refund payment in status ${payment.status}`,
-      );
+    if (payment.status !== 'SUCCEEDED' && payment.status !== 'PARTIALLY_REFUNDED') {
+      throw new BadRequestException(`Cannot refund payment in status ${payment.status}`);
     }
     if (!payment.providerTransactionId) {
-      throw new BadRequestException(
-        'Payment has no provider transaction ID — cannot refund',
-      );
+      throw new BadRequestException('Payment has no provider transaction ID — cannot refund');
     }
 
     const paymentAmountCents = Math.round(Number(payment.amount) * 100);
@@ -658,15 +673,12 @@ export class PaymentsService {
     // fails would overstate cumulative and block a follow-up refund, but
     // the reverse (excluding pending that later succeed) would ALLOW
     // over-refund. Blocking is the safer failure mode.
-    const priorRefunds = await this.stripeProvider.listRefunds(
-      payment.providerTransactionId,
-    );
+    const priorRefunds = await this.stripeProvider.listRefunds(payment.providerTransactionId);
     const priorRefundedCents = priorRefunds
       .filter((r) => r.status !== 'failed' && r.status !== 'canceled')
       .reduce((sum, r) => sum + r.amount, 0);
 
-    const newRefundCents =
-      requestedAmountCents ?? paymentAmountCents - priorRefundedCents;
+    const newRefundCents = requestedAmountCents ?? paymentAmountCents - priorRefundedCents;
 
     if (newRefundCents <= 0) {
       throw new BadRequestException('Payment already fully refunded');
@@ -682,8 +694,7 @@ export class PaymentsService {
     // Phase 3: create the refund on Stripe. OUTSIDE the transaction.
     // If two concurrent refund attempts slip through the optimistic check,
     // Stripe's own validation rejects any that would over-refund.
-    const willBeFullRefund =
-      priorRefundedCents + newRefundCents >= paymentAmountCents;
+    const willBeFullRefund = priorRefundedCents + newRefundCents >= paymentAmountCents;
     const refundResult = await this.stripeProvider.createRefund({
       paymentIntentId: payment.providerTransactionId,
       amount: newRefundCents,
@@ -739,9 +750,7 @@ export class PaymentsService {
 
     const result = refundResult;
 
-    this.logger.log(
-      `Refund ${result.id} processed for payment ${paymentId}`,
-    );
+    this.logger.log(`Refund ${result.id} processed for payment ${paymentId}`);
 
     return {
       refundId: result.id,
@@ -821,9 +830,7 @@ export class PaymentsService {
       });
     }
 
-    this.logger.log(
-      `Booking ${bookingId} marked as paid offline: ${amount} ${currency}`,
-    );
+    this.logger.log(`Booking ${bookingId} marked as paid offline: ${amount} ${currency}`);
 
     return payment;
   }
@@ -835,29 +842,28 @@ export class PaymentsService {
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    const [totalRevenue, thisMonth, pendingPayments, refunded] =
-      await Promise.all([
-        this.prisma.payment.aggregate({
-          where: { tenantId, status: 'SUCCEEDED' },
-          _sum: { amount: true },
-        }),
-        this.prisma.payment.aggregate({
-          where: {
-            tenantId,
-            status: 'SUCCEEDED',
-            createdAt: { gte: startOfMonth },
-          },
-          _sum: { amount: true },
-        }),
-        this.prisma.payment.aggregate({
-          where: { tenantId, status: { in: ['CREATED', 'PENDING'] } },
-          _sum: { amount: true },
-        }),
-        this.prisma.payment.aggregate({
-          where: { tenantId, status: 'REFUNDED' },
-          _sum: { amount: true },
-        }),
-      ]);
+    const [totalRevenue, thisMonth, pendingPayments, refunded] = await Promise.all([
+      this.prisma.payment.aggregate({
+        where: { tenantId, status: 'SUCCEEDED' },
+        _sum: { amount: true },
+      }),
+      this.prisma.payment.aggregate({
+        where: {
+          tenantId,
+          status: 'SUCCEEDED',
+          createdAt: { gte: startOfMonth },
+        },
+        _sum: { amount: true },
+      }),
+      this.prisma.payment.aggregate({
+        where: { tenantId, status: { in: ['CREATED', 'PENDING'] } },
+        _sum: { amount: true },
+      }),
+      this.prisma.payment.aggregate({
+        where: { tenantId, status: 'REFUNDED' },
+        _sum: { amount: true },
+      }),
+    ]);
 
     return {
       totalRevenue: String(totalRevenue._sum.amount ?? 0),
@@ -888,8 +894,10 @@ export class PaymentsService {
     const where: Prisma.PaymentWhereInput = { tenantId };
     if (bookingId) where.bookingId = bookingId;
     if (status) where.status = status as Prisma.PaymentWhereInput['status'];
-    if (startDate) where.createdAt = { ...((where.createdAt as object) || {}), gte: new Date(startDate) };
-    if (endDate) where.createdAt = { ...((where.createdAt as object) || {}), lte: new Date(endDate) };
+    if (startDate)
+      where.createdAt = { ...((where.createdAt as object) || {}), gte: new Date(startDate) };
+    if (endDate)
+      where.createdAt = { ...((where.createdAt as object) || {}), lte: new Date(endDate) };
     if (search) {
       where.booking = {
         client: {

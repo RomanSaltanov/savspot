@@ -72,7 +72,17 @@ export class BookingSessionsService {
     if (dto.serviceId) {
       const service = await this.prisma.service.findUnique({
         where: { id: dto.serviceId },
-        select: { id: true, name: true, durationMinutes: true, basePrice: true, currency: true, pricingModel: true, guestConfig: true, depositConfig: true },
+        select: {
+          id: true,
+          name: true,
+          durationMinutes: true,
+          basePrice: true,
+          currency: true,
+          pricingModel: true,
+          paymentMode: true,
+          guestConfig: true,
+          depositConfig: true,
+        },
       });
       if (service) {
         initialData = {
@@ -82,6 +92,7 @@ export class BookingSessionsService {
           servicePrice: Number(service.basePrice),
           serviceCurrency: service.currency,
           servicePricingModel: service.pricingModel,
+          paymentMode: service.paymentMode,
           guestConfig: service.guestConfig ?? null,
           depositConfig: service.depositConfig ?? null,
         };
@@ -96,10 +107,15 @@ export class BookingSessionsService {
       data: {
         tenantId,
         serviceId: dto.serviceId ?? null,
-        source: (dto.source as 'DIRECT' | 'DIRECTORY' | 'API' | 'WIDGET' | 'REFERRAL' | 'WALK_IN') ?? 'DIRECT',
+        source:
+          (dto.source as 'DIRECT' | 'DIRECTORY' | 'API' | 'WIDGET' | 'REFERRAL' | 'WALK_IN') ??
+          'DIRECT',
         currentStep: 0,
         resolvedSteps: resolvedSteps as unknown as Prisma.InputJsonValue,
-        data: Object.keys(initialData).length > 0 ? initialData as unknown as Prisma.InputJsonValue : undefined,
+        data:
+          Object.keys(initialData).length > 0
+            ? (initialData as unknown as Prisma.InputJsonValue)
+            : undefined,
         status: 'IN_PROGRESS',
       },
       include: {
@@ -284,6 +300,12 @@ export class BookingSessionsService {
       throw new NotFoundException('Service not found');
     }
 
+    if (service.paymentMode !== 'PAY_AT_VENUE') {
+      throw new BadRequestException(
+        'Online payment is required for this service. The booking can only be confirmed after a successful payment.',
+      );
+    }
+
     const sessionData = (session.data ?? {}) as Record<string, unknown>;
     let clientId = session.clientId ?? (sessionData['clientId'] as string | undefined);
 
@@ -334,7 +356,8 @@ export class BookingSessionsService {
     const staffId = (sessionData['staffId'] as string | undefined) ?? null;
 
     // Calculate price based on pricing model
-    const durationMinutes = (heldReservation.endTime.getTime() - heldReservation.startTime.getTime()) / 60000;
+    const durationMinutes =
+      (heldReservation.endTime.getTime() - heldReservation.startTime.getTime()) / 60000;
     const totalAmount = calculatePrice(service, {
       durationMinutes,
       guestCount: guestCount ?? undefined,
@@ -348,9 +371,7 @@ export class BookingSessionsService {
 
     const bookingStatus = service.confirmationMode === 'AUTO_CONFIRM' ? 'CONFIRMED' : 'PENDING';
     const resolvedSteps = session.resolvedSteps as unknown as ResolvedStep[];
-    const confirmationStep = resolvedSteps.findIndex(
-      (step) => step.type === 'CONFIRMATION',
-    );
+    const confirmationStep = resolvedSteps.findIndex((step) => step.type === 'CONFIRMATION');
 
     // Create the booking and convert the reservation in a transaction
     const [booking] = await this.prisma.$transaction([
@@ -371,11 +392,13 @@ export class BookingSessionsService {
           notes,
           source: session.source,
           referralLinkId,
-          guestDetails: sessionData['guestEmail'] ? {
-            email: sessionData['guestEmail'],
-            name: sessionData['guestName'],
-            phone: sessionData['guestPhone'] ?? null,
-          } as unknown as Prisma.InputJsonValue : Prisma.JsonNull,
+          guestDetails: sessionData['guestEmail']
+            ? ({
+                email: sessionData['guestEmail'],
+                name: sessionData['guestName'],
+                phone: sessionData['guestPhone'] ?? null,
+              } as unknown as Prisma.InputJsonValue)
+            : Prisma.JsonNull,
         },
       }),
       this.prisma.dateReservation.update({
@@ -415,7 +438,9 @@ export class BookingSessionsService {
     if (referralLinkId) {
       this.referralsService.incrementUsageCount(referralLinkId).catch((err) => {
         const message = err instanceof Error ? err.message : 'Unknown error';
-        this.logger.warn(`Failed to increment referral usage count for ${referralLinkId}: ${message}`);
+        this.logger.warn(
+          `Failed to increment referral usage count for ${referralLinkId}: ${message}`,
+        );
       });
     }
 
@@ -444,12 +469,9 @@ export class BookingSessionsService {
    *   - SERVICE_SELECTION: if tenant has multiple active services and no serviceId pre-selected
    *   - VENUE_SELECTION: if service has a venueId or tenant has venues
    *   - GUEST_COUNT: if service has guestConfig
-   *   - PAYMENT: if payment provider connected and price > 0 (future - skipped for now)
+   *   - PAYMENT: if this service requires full or deposit payment online
    */
-  private async resolveSteps(
-    tenantId: string,
-    serviceId?: string,
-  ): Promise<ResolvedStep[]> {
+  private async resolveSteps(tenantId: string, serviceId?: string): Promise<ResolvedStep[]> {
     const steps: ResolvedStep[] = [];
     let order = 0;
 
@@ -474,13 +496,21 @@ export class BookingSessionsService {
       venueId: string | null;
       guestConfig: unknown;
       basePrice: { toNumber: () => number } | number;
+      paymentMode: 'PAY_AT_VENUE' | 'FULL_ONLINE' | 'DEPOSIT_ONLINE';
       intakeFormConfig: unknown;
     } | null = null;
 
     if (serviceId) {
       service = await this.prisma.service.findFirst({
         where: { id: serviceId, tenantId, isActive: true },
-        select: { id: true, venueId: true, guestConfig: true, basePrice: true, intakeFormConfig: true },
+        select: {
+          id: true,
+          venueId: true,
+          guestConfig: true,
+          basePrice: true,
+          paymentMode: true,
+          intakeFormConfig: true,
+        },
       });
     }
 
@@ -578,19 +608,16 @@ export class BookingSessionsService {
       order: order++,
     });
 
-    // PAYMENT: if tenant has payment provider onboarded and service price > 0
+    // PAYMENT: driven by the service, never silently skipped when a provider
+    // is not configured. The payment screen will explain the configuration
+    // problem and the backend will refuse unpaid completion.
     if (service) {
-      const tenant = await this.prisma.tenant.findUnique({
-        where: { id: tenantId },
-        select: { paymentProviderOnboarded: true },
-      });
-
       const basePrice =
         typeof service.basePrice === 'number'
           ? service.basePrice
           : (service.basePrice as { toNumber: () => number }).toNumber();
 
-      if (tenant?.paymentProviderOnboarded && basePrice > 0) {
+      if (service.paymentMode !== 'PAY_AT_VENUE' && basePrice > 0) {
         steps.push({
           type: 'PAYMENT',
           label: 'Payment',
@@ -631,6 +658,7 @@ export class BookingSessionsService {
             name: true,
             basePrice: true,
             currency: true,
+            paymentMode: true,
           },
         },
       },
@@ -644,6 +672,12 @@ export class BookingSessionsService {
       throw new BadRequestException('Session is not in progress');
     }
 
+    if (session.service?.paymentMode === 'PAY_AT_VENUE') {
+      throw new BadRequestException('This service is configured for payment at the venue');
+    }
+
+    await this.paymentsService.assertOnlinePaymentReady(session.tenantId);
+
     // Check for an active held reservation
     const heldReservation = await this.prisma.dateReservation.findFirst({
       where: {
@@ -655,9 +689,7 @@ export class BookingSessionsService {
     });
 
     if (!heldReservation) {
-      throw new BadRequestException(
-        'No active reservation found — reserve a slot first',
-      );
+      throw new BadRequestException('No active reservation found — reserve a slot first');
     }
 
     if (!session.serviceId || !session.service) {
@@ -677,8 +709,7 @@ export class BookingSessionsService {
     });
 
     const sessionData = (session.data ?? {}) as Record<string, unknown>;
-    let clientId =
-      session.clientId ?? (sessionData['clientId'] as string | undefined);
+    let clientId = session.clientId ?? (sessionData['clientId'] as string | undefined);
 
     // Guest checkout: create a passwordless user if no clientId
     if (!clientId) {
@@ -731,7 +762,8 @@ export class BookingSessionsService {
         where: { id: session.serviceId, tenantId: session.tenantId },
         select: { pricingModel: true, basePrice: true, tierConfig: true },
       });
-      const paymentDurationMinutes = (heldReservation.endTime.getTime() - heldReservation.startTime.getTime()) / 60000;
+      const paymentDurationMinutes =
+        (heldReservation.endTime.getTime() - heldReservation.startTime.getTime()) / 60000;
       const paymentSessionData = (session.data ?? {}) as Record<string, unknown>;
       const paymentTotalAmount = fullService
         ? calculatePrice(fullService, {
@@ -740,7 +772,8 @@ export class BookingSessionsService {
           })
         : Number(session.service.basePrice);
 
-      const paymentReferralLinkId = (paymentSessionData['referralLinkId'] as string | undefined) ?? null;
+      const paymentReferralLinkId =
+        (paymentSessionData['referralLinkId'] as string | undefined) ?? null;
       const paymentStaffId = (paymentSessionData['staffId'] as string | undefined) ?? null;
 
       booking = await this.prisma.booking.create({
@@ -756,23 +789,22 @@ export class BookingSessionsService {
           endTime: heldReservation.endTime,
           totalAmount: paymentTotalAmount,
           currency: session.service.currency,
-          guestCount:
-            (sessionData['guestCount'] as number | undefined) ?? null,
+          guestCount: (sessionData['guestCount'] as number | undefined) ?? null,
           notes: (sessionData['notes'] as string | undefined) ?? null,
           source: session.source,
           referralLinkId: paymentReferralLinkId,
         },
       });
 
-      this.logger.log(
-        `Booking ${booking.id} created in PENDING for payment processing`,
-      );
+      this.logger.log(`Booking ${booking.id} created in PENDING for payment processing`);
 
       // Increment referral link usage count (fire-and-forget)
       if (paymentReferralLinkId) {
         this.referralsService.incrementUsageCount(paymentReferralLinkId).catch((err) => {
           const message = err instanceof Error ? err.message : 'Unknown error';
-          this.logger.warn(`Failed to increment referral usage count for ${paymentReferralLinkId}: ${message}`);
+          this.logger.warn(
+            `Failed to increment referral usage count for ${paymentReferralLinkId}: ${message}`,
+          );
         });
       }
     }

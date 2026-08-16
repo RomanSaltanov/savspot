@@ -16,7 +16,10 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 const LATE_CANCEL_FEE_TYPES = ['percentage', 'fixed'] as const;
 
 export class CancellationPolicyDto {
-  @ApiPropertyOptional({ example: 24, description: 'Hours before appointment for free cancellation' })
+  @ApiPropertyOptional({
+    example: 24,
+    description: 'Hours before appointment for free cancellation',
+  })
   @IsNumber()
   @Min(0)
   @IsOptional()
@@ -33,13 +36,19 @@ export class CancellationPolicyDto {
   @IsOptional()
   late_cancel_fee_type?: 'percentage' | 'fixed';
 
-  @ApiPropertyOptional({ example: 50, description: 'Late cancellation fee amount (percentage or fixed)' })
+  @ApiPropertyOptional({
+    example: 50,
+    description: 'Late cancellation fee amount (percentage or fixed)',
+  })
   @IsNumber()
   @Min(0)
   @IsOptional()
   late_cancel_fee_amount?: number;
 
-  @ApiPropertyOptional({ example: 2, description: 'Hours before appointment when no refund is given' })
+  @ApiPropertyOptional({
+    example: 2,
+    description: 'Hours before appointment when no refund is given',
+  })
   @IsNumber()
   @Min(0)
   @IsOptional()
@@ -48,6 +57,7 @@ export class CancellationPolicyDto {
 
 const PRICING_MODELS = ['FIXED', 'HOURLY', 'TIERED', 'CUSTOM'] as const;
 const CONFIRMATION_MODES = ['AUTO_CONFIRM', 'MANUAL_APPROVAL'] as const;
+const PAYMENT_MODES = ['PAY_AT_VENUE', 'FULL_ONLINE', 'DEPOSIT_ONLINE'] as const;
 
 export class CreateServiceDto {
   @ApiProperty({ example: 'Full-Day Venue Rental' })
@@ -88,6 +98,17 @@ export class CreateServiceDto {
   })
   @IsOptional()
   pricingModel?: string;
+
+  @ApiPropertyOptional({
+    enum: PAYMENT_MODES,
+    example: 'PAY_AT_VENUE',
+    description: 'When the customer pays for this service',
+  })
+  @IsEnum(PAYMENT_MODES, {
+    message: `paymentMode must be one of: ${PAYMENT_MODES.join(', ')}`,
+  })
+  @IsOptional()
+  paymentMode?: string;
 
   @ApiPropertyOptional({
     enum: CONFIRMATION_MODES,
@@ -180,13 +201,19 @@ export class CreateServiceDto {
   @IsOptional()
   maxRescheduleCount?: number;
 
-  @ApiPropertyOptional({ example: 15, description: 'Grace period in minutes before marking no-show' })
+  @ApiPropertyOptional({
+    example: 15,
+    description: 'Grace period in minutes before marking no-show',
+  })
   @IsInt()
   @Min(0)
   @IsOptional()
   noShowGraceMinutes?: number;
 
-  @ApiPropertyOptional({ example: 24, description: 'Hours before auto-rejecting unapproved bookings' })
+  @ApiPropertyOptional({
+    example: 24,
+    description: 'Hours before auto-rejecting unapproved bookings',
+  })
   @IsInt()
   @Min(1)
   @IsOptional()

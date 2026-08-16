@@ -3,7 +3,29 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Briefcase, Plus, Pencil, Ban } from 'lucide-react';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, Button, Badge, Card, CardContent, CardHeader, CardTitle, Table, TableHeader, TableBody, TableRow, TableHead, TableCell, Skeleton } from '@savspot/ui';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  Button,
+  Badge,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+  Skeleton,
+} from '@savspot/ui';
 import { ROUTES } from '@/lib/constants';
 import { useServices, useDeactivateService } from '@/hooks/use-api';
 
@@ -15,6 +37,7 @@ interface Service {
   currency: string;
   isActive: boolean;
   pricingModel: string;
+  paymentMode: 'PAY_AT_VENUE' | 'FULL_ONLINE' | 'DEPOSIT_ONLINE';
   guestConfig: Record<string, unknown> | null;
   depositConfig: Record<string, unknown> | null;
   intakeFormConfig: Record<string, unknown> | null;
@@ -22,13 +45,19 @@ interface Service {
 
 export default function ServicesPage() {
   const router = useRouter();
-  const { data: services = [], isLoading, error: queryError } = useServices() as {
+  const {
+    data: services = [],
+    isLoading,
+    error: queryError,
+  } = useServices() as {
     data: Service[] | undefined;
     isLoading: boolean;
     error: Error | null;
   };
   const deactivateMutation = useDeactivateService();
-  const [deactivateTarget, setDeactivateTarget] = useState<{ id: string; name: string } | null>(null);
+  const [deactivateTarget, setDeactivateTarget] = useState<{ id: string; name: string } | null>(
+    null,
+  );
 
   const handleDeactivate = (serviceId: string, serviceName: string) => {
     setDeactivateTarget({ id: serviceId, name: serviceName });
@@ -69,7 +98,8 @@ export default function ServicesPage() {
       badges.push(pricingModelLabels[service.pricingModel]!);
     }
     if (service.guestConfig !== null) badges.push('Groups');
-    if (service.depositConfig !== null) badges.push('Deposit');
+    if (service.paymentMode === 'FULL_ONLINE') badges.push('Online payment');
+    if (service.paymentMode === 'DEPOSIT_ONLINE') badges.push('Online deposit');
     if (service.intakeFormConfig !== null) badges.push('Form');
     return badges;
   };
@@ -105,9 +135,7 @@ export default function ServicesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold">Services</h2>
-          <p className="text-sm text-muted-foreground">
-            Manage the services you offer to clients
-          </p>
+          <p className="text-sm text-muted-foreground">Manage the services you offer to clients</p>
         </div>
         <Button onClick={() => router.push(ROUTES.SERVICES_NEW)}>
           <Plus className="mr-2 h-4 w-4" />
@@ -131,13 +159,9 @@ export default function ServicesPage() {
               <Briefcase className="mb-4 h-12 w-12 text-muted-foreground/50" />
               <h3 className="text-lg font-medium">No services yet</h3>
               <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-                Create your first service to start accepting bookings from
-                clients.
+                Create your first service to start accepting bookings from clients.
               </p>
-              <Button
-                className="mt-4"
-                onClick={() => router.push(ROUTES.SERVICES_NEW)}
-              >
+              <Button className="mt-4" onClick={() => router.push(ROUTES.SERVICES_NEW)}>
                 <Plus className="mr-2 h-4 w-4" />
                 Create your first service
               </Button>
@@ -184,9 +208,7 @@ export default function ServicesPage() {
                       {formatPrice(service.basePrice, service.currency)}
                     </TableCell>
                     <TableCell className="hidden sm:table-cell">
-                      <Badge
-                        variant={service.isActive ? 'default' : 'secondary'}
-                      >
+                      <Badge variant={service.isActive ? 'default' : 'secondary'}>
                         {service.isActive ? 'Active' : 'Inactive'}
                       </Badge>
                     </TableCell>
@@ -195,9 +217,7 @@ export default function ServicesPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() =>
-                            router.push(`/services/${service.id}`)
-                          }
+                          onClick={() => router.push(`/services/${service.id}`)}
                         >
                           <Pencil className="h-4 w-4" />
                         </Button>
@@ -220,19 +240,23 @@ export default function ServicesPage() {
         </CardContent>
       </Card>
 
-      <AlertDialog open={!!deactivateTarget} onOpenChange={(open) => { if (!open) setDeactivateTarget(null); }}>
+      <AlertDialog
+        open={!!deactivateTarget}
+        onOpenChange={(open) => {
+          if (!open) setDeactivateTarget(null);
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Deactivate Service</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to deactivate &quot;{deactivateTarget?.name}&quot;? This will hide it from booking.
+              Are you sure you want to deactivate &quot;{deactivateTarget?.name}&quot;? This will
+              hide it from booking.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDeactivate}>
-              Deactivate
-            </AlertDialogAction>
+            <AlertDialogAction onClick={confirmDeactivate}>Deactivate</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

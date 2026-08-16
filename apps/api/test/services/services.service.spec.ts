@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ServicesService } from '@/services/services.service';
 
 // ---------------------------------------------------------------------------
@@ -11,6 +11,9 @@ const SERVICE_ID = 'svc-001';
 
 function makePrisma() {
   return {
+    tenant: {
+      findUnique: vi.fn().mockResolvedValue({ slug: 'test-salon' }),
+    },
     service: {
       findMany: vi.fn(),
       findFirst: vi.fn(),
@@ -40,6 +43,7 @@ function makeService(overrides: Record<string, unknown> = {}) {
     basePrice: 25,
     currency: 'USD',
     pricingModel: 'FIXED',
+    paymentMode: 'PAY_AT_VENUE',
     confirmationMode: 'AUTO_CONFIRM',
     categoryId: null,
     venueId: null,
@@ -113,9 +117,7 @@ describe('ServicesService', () => {
     it('throws NotFoundException when service not found', async () => {
       prisma.service.findFirst.mockResolvedValue(null);
 
-      await expect(
-        service.findById(TENANT_ID, 'nonexistent'),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.findById(TENANT_ID, 'nonexistent')).rejects.toThrow(NotFoundException);
     });
 
     it('enforces tenant isolation by including tenantId in query', async () => {
@@ -148,6 +150,7 @@ describe('ServicesService', () => {
             durationMinutes: 60,
             basePrice: 0,
             pricingModel: 'FIXED',
+            paymentMode: 'PAY_AT_VENUE',
             confirmationMode: 'AUTO_CONFIRM',
           }),
         }),
@@ -177,6 +180,39 @@ describe('ServicesService', () => {
           }),
         }),
       );
+    });
+
+    it('creates a service that requires full online payment', async () => {
+      prisma.service.create.mockResolvedValue(
+        makeService({ paymentMode: 'FULL_ONLINE', basePrice: 100 }),
+      );
+
+      await service.create(TENANT_ID, {
+        name: 'Colour treatment',
+        currency: 'GBP',
+        basePrice: 100,
+        paymentMode: 'FULL_ONLINE',
+      } as never);
+
+      expect(prisma.service.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            paymentMode: 'FULL_ONLINE',
+            depositConfig: undefined,
+          }),
+        }),
+      );
+    });
+
+    it('rejects online payment for a free service', async () => {
+      await expect(
+        service.create(TENANT_ID, {
+          name: 'Consultation',
+          currency: 'GBP',
+          basePrice: 0,
+          paymentMode: 'FULL_ONLINE',
+        } as never),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 
@@ -211,14 +247,16 @@ describe('ServicesService', () => {
 
       await service.update(TENANT_ID, SERVICE_ID, {
         guestConfig: { min: 1, max: 10 },
-        depositConfig: { required: true, percent: 50 },
+        paymentMode: 'DEPOSIT_ONLINE',
+        depositConfig: { type: 'PERCENTAGE', amount: 50 },
       } as never);
 
       expect(prisma.service.update).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             guestConfig: { min: 1, max: 10 },
-            depositConfig: { required: true, percent: 50 },
+            paymentMode: 'DEPOSIT_ONLINE',
+            depositConfig: { type: 'PERCENTAGE', amount: 50 },
           }),
         }),
       );
@@ -244,9 +282,7 @@ describe('ServicesService', () => {
     it('throws NotFoundException when service not found', async () => {
       prisma.service.findFirst.mockResolvedValue(null);
 
-      await expect(
-        service.remove(TENANT_ID, 'nonexistent'),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.remove(TENANT_ID, 'nonexistent')).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -255,9 +291,7 @@ describe('ServicesService', () => {
   describe('getPreferenceTemplate', () => {
     it('returns the preference template for a service', async () => {
       const template = { hairType: 'straight', length: 'medium' };
-      prisma.service.findFirst.mockResolvedValue(
-        makeService({ preferenceTemplate: template }),
-      );
+      prisma.service.findFirst.mockResolvedValue(makeService({ preferenceTemplate: template }));
 
       const result = await service.getPreferenceTemplate(TENANT_ID, SERVICE_ID);
 
@@ -285,11 +319,7 @@ describe('ServicesService', () => {
         preferenceTemplate: template,
       });
 
-      const result = await service.setPreferenceTemplate(
-        TENANT_ID,
-        SERVICE_ID,
-        template,
-      );
+      const result = await service.setPreferenceTemplate(TENANT_ID, SERVICE_ID, template);
 
       expect(result.template).toEqual(template);
     });
@@ -297,9 +327,9 @@ describe('ServicesService', () => {
     it('throws NotFoundException when service not found', async () => {
       prisma.service.findFirst.mockResolvedValue(null);
 
-      await expect(
-        service.setPreferenceTemplate(TENANT_ID, 'nonexistent', {}),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.setPreferenceTemplate(TENANT_ID, 'nonexistent', {})).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -329,9 +359,7 @@ describe('ServicesService', () => {
     it('throws NotFoundException when source service not found', async () => {
       prisma.service.findFirst.mockResolvedValue(null);
 
-      await expect(
-        service.copy(TENANT_ID, 'nonexistent'),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.copy(TENANT_ID, 'nonexistent')).rejects.toThrow(NotFoundException);
     });
 
     it('starts from sortOrder 1 when no existing services', async () => {

@@ -16,6 +16,7 @@ import { CancellationPolicyDto } from './create-service.dto';
 
 const PRICING_MODELS = ['FIXED', 'HOURLY', 'TIERED', 'CUSTOM'] as const;
 const CONFIRMATION_MODES = ['AUTO_CONFIRM', 'MANUAL_APPROVAL'] as const;
+const PAYMENT_MODES = ['PAY_AT_VENUE', 'FULL_ONLINE', 'DEPOSIT_ONLINE'] as const;
 
 export class UpdateServiceDto {
   @ApiPropertyOptional({ example: 'Updated Service Name' })
@@ -51,6 +52,13 @@ export class UpdateServiceDto {
   })
   @IsOptional()
   pricingModel?: string;
+
+  @ApiPropertyOptional({ enum: PAYMENT_MODES, example: 'PAY_AT_VENUE' })
+  @IsEnum(PAYMENT_MODES, {
+    message: `paymentMode must be one of: ${PAYMENT_MODES.join(', ')}`,
+  })
+  @IsOptional()
+  paymentMode?: string;
 
   @ApiPropertyOptional({ enum: CONFIRMATION_MODES, example: 'AUTO_CONFIRM' })
   @IsEnum(CONFIRMATION_MODES, {

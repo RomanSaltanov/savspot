@@ -179,6 +179,12 @@ enum PaymentType {
   REFUND
 }
 
+enum ServicePaymentMode {
+  PAY_AT_VENUE
+  FULL_ONLINE
+  DEPOSIT_ONLINE
+}
+
 enum InvoiceStatus {
   DRAFT
   SENT
@@ -1376,6 +1382,7 @@ model Service {
   basePrice       Decimal      @default(0) @map("base_price") @db.Decimal(12, 2)
   currency        String
   pricingModel    PricingModel @default(FIXED) @map("pricing_model")
+  paymentMode     ServicePaymentMode @default(PAY_AT_VENUE) @map("payment_mode")
   isActive        Boolean      @default(true) @map("is_active")
   sortOrder       Int          @default(0) @map("sort_order")
 

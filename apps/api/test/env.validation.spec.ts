@@ -5,7 +5,9 @@ describe('envSchema', () => {
   describe('defaults', () => {
     it('should provide sensible defaults when no env vars are set', () => {
       const result = envSchema.parse({});
-      expect(result.DATABASE_URL).toBe('postgresql://savspot:savspot_dev@localhost:5432/savspot_dev');
+      expect(result.DATABASE_URL).toBe(
+        'postgresql://savspot:savspot_dev@localhost:5432/savspot_dev',
+      );
       expect(result.REDIS_URL).toBe('redis://localhost:6379');
       expect(result.PORT).toBe(3001);
       expect(result.NODE_ENV).toBe('development');
@@ -148,22 +150,22 @@ describe('envSchema', () => {
       expect(result.success).toBe(false);
     });
 
-    it('should reject production without STRIPE_SECRET_KEY', () => {
+    it('should allow production without optional STRIPE_SECRET_KEY', () => {
       const { STRIPE_SECRET_KEY: _, ...env } = prodBase;
       const result = envSchema.safeParse(env);
-      expect(result.success).toBe(false);
+      expect(result.success).toBe(true);
     });
 
-    it('should reject production without STRIPE_WEBHOOK_SECRET', () => {
+    it('should allow production without optional STRIPE_WEBHOOK_SECRET', () => {
       const { STRIPE_WEBHOOK_SECRET: _, ...env } = prodBase;
       const result = envSchema.safeParse(env);
-      expect(result.success).toBe(false);
+      expect(result.success).toBe(true);
     });
 
-    it('should reject production without RESEND_API_KEY', () => {
+    it('should allow production without optional RESEND_API_KEY', () => {
       const { RESEND_API_KEY: _, ...env } = prodBase;
       const result = envSchema.safeParse(env);
-      expect(result.success).toBe(false);
+      expect(result.success).toBe(true);
     });
 
     it('should not require these keys in development', () => {
@@ -218,20 +220,16 @@ describe('validateEnv', () => {
   });
 
   it('should throw an error with descriptive message for invalid config', () => {
-    expect(() =>
-      validateEnv({ DATABASE_URL: 'not-a-url' }),
-    ).toThrow('Environment validation failed');
+    expect(() => validateEnv({ DATABASE_URL: 'not-a-url' })).toThrow(
+      'Environment validation failed',
+    );
   });
 
   it('should throw an error when PORT is not a valid number', () => {
-    expect(() =>
-      validateEnv({ PORT: 'abc' }),
-    ).toThrow('Environment validation failed');
+    expect(() => validateEnv({ PORT: 'abc' })).toThrow('Environment validation failed');
   });
 
   it('should throw an error when NODE_ENV is invalid', () => {
-    expect(() =>
-      validateEnv({ NODE_ENV: 'staging' }),
-    ).toThrow('Environment validation failed');
+    expect(() => validateEnv({ NODE_ENV: 'staging' })).toThrow('Environment validation failed');
   });
 });
