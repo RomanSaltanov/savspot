@@ -22,8 +22,6 @@ interface TenantData {
 
 const DEFAULT_COLOR = '#6366f1';
 const DEFAULT_TEXT = 'Book Now';
-const BOOKING_BASE_URL = 'https://savspot.co/book';
-const EMBED_BASE_URL = 'https://savspot.co/embed/book';
 
 // ---------- Component ----------
 
@@ -40,6 +38,11 @@ export default function EmbedSettingsPage() {
   const [buttonText, setButtonText] = useState(DEFAULT_TEXT);
   const [copied, setCopied] = useState(false);
   const [embedType, setEmbedType] = useState<'link' | 'popup' | 'iframe'>('link');
+  const [platformOrigin, setPlatformOrigin] = useState('');
+
+  useEffect(() => {
+    setPlatformOrigin(window.location.origin);
+  }, []);
 
   // Fetch tenant data
   useEffect(() => {
@@ -73,10 +76,10 @@ export default function EmbedSettingsPage() {
 
   // Generate embed code
   const generateEmbedCode = useCallback(() => {
-    if (!tenant?.slug) return '';
+    if (!tenant?.slug || !platformOrigin) return '';
 
-    const bookingUrl = `${BOOKING_BASE_URL}/${tenant.slug}`;
-    const embedUrl = `${EMBED_BASE_URL}/${tenant.slug}`;
+    const bookingUrl = `${platformOrigin}/book/${tenant.slug}`;
+    const embedUrl = `${platformOrigin}/embed/book/${tenant.slug}`;
 
     if (embedType === 'iframe') {
       return `<iframe src="${embedUrl}" width="100%" height="700" style="border:none; border-radius:8px;" title="Book an appointment"></iframe>`;
@@ -95,7 +98,7 @@ export default function EmbedSettingsPage() {
 
     // Link / redirect mode
     return `<a href="${bookingUrl}" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;justify-content:center;padding:12px 24px;font-size:15px;font-weight:600;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;color:#fff;background-color:${buttonColor};border:none;border-radius:8px;text-decoration:none;cursor:pointer;line-height:1;box-shadow:0 1px 3px 0 rgba(0,0,0,0.1),0 1px 2px -1px rgba(0,0,0,0.1)">${buttonText}</a>`;
-  }, [tenant?.slug, buttonColor, buttonText, embedType]);
+  }, [tenant?.slug, platformOrigin, buttonColor, buttonText, embedType]);
 
   const embedCode = generateEmbedCode();
 
@@ -280,7 +283,8 @@ export default function EmbedSettingsPage() {
             {embedType === 'iframe' ? (
               <div className="w-full text-center text-sm text-muted-foreground">
                 <div className="rounded-lg border bg-background p-4">
-                  Iframe preview: <code>{BOOKING_BASE_URL}/{tenant.slug}</code>
+                  Iframe preview:{' '}
+                  <code>{platformOrigin}/book/{tenant.slug}</code>
                 </div>
               </div>
             ) : (

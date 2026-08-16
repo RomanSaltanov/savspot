@@ -125,12 +125,67 @@ export function BookingWizard({
     async (dataUpdates?: Partial<BookingSessionData>) => {
       directionRef.current = 'forward';
       const nextStep = Math.min(currentStepIndex + 1, steps.length - 1);
+
+      const isCompletingWithoutPayment =
+        !isPreview &&
+        steps[nextStep]?.type === 'CONFIRMATION' &&
+        !steps.some((step) => step.type === 'PAYMENT');
+
+      if (isCompletingWithoutPayment) {
+        // Persist the customer's final details while keeping the UI on the
+        // current step. Only show confirmation after a real booking exists.
+        const updated = await updateSession({
+          ...(dataUpdates
+            ? { data: { ...session.data, ...dataUpdates } }
+            : {}),
+        });
+
+        if (!updated) return;
+
+        setIsTransitioning(true);
+        setError(null);
+
+        try {
+          const res = await fetch(
+            `${API_URL}/api/booking-sessions/${session.id}/complete`,
+            { method: 'POST' },
+          );
+
+          if (!res.ok) {
+            const text = await res.text();
+            throw new Error(text || 'Failed to complete booking');
+          }
+
+          onSessionUpdate({
+            ...updated,
+            status: 'COMPLETED',
+            currentStep: nextStep,
+          });
+        } catch (err) {
+          const message =
+            err instanceof Error ? err.message : 'An unexpected error occurred';
+          setError(message);
+        } finally {
+          setIsTransitioning(false);
+        }
+
+        return;
+      }
+
       await updateSession({
         currentStep: nextStep,
         ...(dataUpdates ? { data: { ...session.data, ...dataUpdates } } : {}),
       });
     },
-    [currentStepIndex, steps.length, updateSession, session.data],
+    [
+      currentStepIndex,
+      steps,
+      isPreview,
+      updateSession,
+      session.data,
+      session.id,
+      onSessionUpdate,
+    ],
   );
 
   const goToPrevStep = useCallback(async () => {

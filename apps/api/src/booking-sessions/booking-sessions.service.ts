@@ -347,6 +347,10 @@ export class BookingSessionsService {
     });
 
     const bookingStatus = service.confirmationMode === 'AUTO_CONFIRM' ? 'CONFIRMED' : 'PENDING';
+    const resolvedSteps = session.resolvedSteps as unknown as ResolvedStep[];
+    const confirmationStep = resolvedSteps.findIndex(
+      (step) => step.type === 'CONFIRMATION',
+    );
 
     // Create the booking and convert the reservation in a transaction
     const [booking] = await this.prisma.$transaction([
@@ -382,6 +386,7 @@ export class BookingSessionsService {
         where: { id },
         data: {
           status: 'COMPLETED',
+          ...(confirmationStep >= 0 ? { currentStep: confirmationStep } : {}),
           reservationToken: heldReservation.token,
         },
       }),
