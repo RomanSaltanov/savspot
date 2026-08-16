@@ -110,6 +110,27 @@ describe('StripeConnectService', () => {
       );
     });
 
+    it('should use the tenant country when the request omits it', async () => {
+      prisma.tenant.findUnique.mockResolvedValue({
+        id: TENANT_ID,
+        paymentProviderAccountId: null,
+        contactEmail: 'fallback@example.com',
+        country: 'gb',
+      });
+      stripeProvider.createConnectedAccount.mockResolvedValue({
+        accountId: ACCOUNT_ID,
+        onboardingComplete: false,
+      });
+      prisma.tenant.updateMany.mockResolvedValue({ count: 1 });
+
+      await service.createAccount(TENANT_ID, 'owner@example.com');
+
+      expect(stripeProvider.createConnectedAccount).toHaveBeenCalledWith(
+        'owner@example.com',
+        'GB',
+      );
+    });
+
     it('should throw NotFoundException when tenant does not exist', async () => {
       prisma.tenant.findUnique.mockResolvedValue(null);
 

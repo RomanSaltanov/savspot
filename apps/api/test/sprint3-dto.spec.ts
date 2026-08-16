@@ -254,7 +254,7 @@ describe('CreateRefundDto', () => {
 // ---------------------------------------------------------------------------
 
 describe('ConnectAccountDto', () => {
-  it('should pass with no fields (country defaults to US)', async () => {
+  it('should pass with no fields (country defaults to the tenant profile)', async () => {
     const dto = plainToInstance(ConnectAccountDto, {});
     const errors = await validate(dto);
     expect(errors).toHaveLength(0);

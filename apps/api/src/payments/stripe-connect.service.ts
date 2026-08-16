@@ -67,13 +67,14 @@ export class StripeConnectService {
   /**
    * Create a Stripe Connect Express account for a tenant.
    */
-  async createAccount(tenantId: string, email: string, country: string) {
+  async createAccount(tenantId: string, email: string, country?: string) {
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
       select: {
         id: true,
         paymentProviderAccountId: true,
         contactEmail: true,
+        country: true,
       },
     });
 
@@ -94,9 +95,16 @@ export class StripeConnectService {
       );
     }
 
+    const effectiveCountry = (country || tenant.country)?.trim().toUpperCase();
+    if (!effectiveCountry) {
+      throw new BadRequestException(
+        'Country is required to create a Stripe account',
+      );
+    }
+
     const account = await this.stripeProvider.createConnectedAccount(
       effectiveEmail,
-      country,
+      effectiveCountry,
     );
 
     // Optimistic update: only claim the tenant row if paymentProviderAccountId

@@ -51,7 +51,7 @@ export class PaymentsController {
     return this.stripeConnectService.createAccount(
       tenantId,
       email,
-      dto.country ?? 'US',
+      dto.country,
     );
   }
 
