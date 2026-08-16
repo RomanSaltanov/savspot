@@ -40,9 +40,18 @@ function makePrisma() {
   return prisma;
 }
 
-function makeConfig() {
+function makeConfig(mode: 'direct' | 'connect' = 'connect') {
+  const values: Record<string, unknown> = {
+    'stripe.accountMode': mode,
+    'stripe.secretKey': 'sk_test_example',
+    'stripe.publishableKey': 'pk_test_example',
+    'stripe.webhookSecret': 'whsec_example',
+  };
+
   return {
-    get: vi.fn((_key: string, fallback?: unknown) => fallback ?? 1),
+    get: vi.fn((key: string, fallback?: unknown) =>
+      Object.prototype.hasOwnProperty.call(values, key) ? values[key] : fallback,
+    ),
   };
 }
 
@@ -215,6 +224,65 @@ describe('PaymentsService', () => {
           currency: 'usd',
           connectedAccountId: CONNECTED_ACCOUNT,
           platformFeeAmount: 50,
+        }),
+      );
+    });
+
+    it('should create a direct PaymentIntent without Connect fields or platform fee', async () => {
+      prisma.booking.findFirst.mockResolvedValue({
+        ...mockBooking,
+        clientId: 'client-1',
+        source: 'DIRECT',
+        client: null,
+        service: {
+          id: 'svc-1',
+          paymentMode: 'FULL_ONLINE',
+          depositConfig: null,
+        },
+        tenant: {
+          paymentProvider: 'STRIPE',
+          paymentProviderAccountId: null,
+          paymentProviderOnboarded: false,
+        },
+      });
+      stripe.createPaymentIntent.mockResolvedValue({
+        id: STRIPE_PI_ID,
+        clientSecret: 'secret_direct',
+      });
+      prisma.payment.create.mockResolvedValue({ id: PAYMENT_ID });
+      prisma.paymentStateHistory.create.mockResolvedValue({});
+
+      const directService = new PaymentsService(
+        prisma as never,
+        makeConfig('direct') as never,
+        stripe as never,
+        makeEvents() as never,
+      );
+
+      const result = await directService.processPaymentIntent(
+        TENANT_ID,
+        BOOKING_ID,
+        SESSION_ID,
+      );
+
+      expect(result.clientSecret).toBe('secret_direct');
+      const createIntentParams = stripe.createPaymentIntent.mock.calls[0]?.[0];
+      expect(createIntentParams).toEqual(
+        expect.objectContaining({
+          amount: 5000,
+          currency: 'usd',
+          metadata: expect.objectContaining({ stripeAccountMode: 'direct' }),
+        }),
+      );
+      expect(createIntentParams).not.toHaveProperty('connectedAccountId');
+      expect(createIntentParams).not.toHaveProperty('platformFeeAmount');
+      expect(prisma.payment.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            platformFee: 0,
+            processingFee: 0,
+            referralCommission: null,
+          }),
         }),
       );
     });
@@ -418,7 +486,10 @@ describe('PaymentsService', () => {
       const result = await service.processRefund(TENANT_ID, PAYMENT_ID);
       expect(result.refundId).toBe('re_1');
       expect(stripe.createRefund).toHaveBeenCalledWith(
-        expect.objectContaining({ refundApplicationFee: true }),
+        expect.objectContaining({
+          connectedAccountPayment: true,
+          refundApplicationFee: true,
+        }),
       );
       expect(prisma.payment.update).toHaveBeenCalledWith(
         expect.objectContaining({ data: { status: 'REFUNDED' } }),
@@ -442,6 +513,33 @@ describe('PaymentsService', () => {
       );
       expect(prisma.payment.update).toHaveBeenCalledWith(
         expect.objectContaining({ data: { status: 'PARTIALLY_REFUNDED' } }),
+      );
+    });
+
+    it('should refund a direct payment without Connect refund flags', async () => {
+      prisma.payment.findFirst.mockResolvedValue({
+        id: PAYMENT_ID,
+        status: 'SUCCEEDED',
+        providerTransactionId: STRIPE_PI_ID,
+        amount: '50.00',
+        metadata: { stripeAccountMode: 'direct' },
+      });
+      stripe.createRefund.mockResolvedValue({
+        id: 're_direct',
+        amount: 5000,
+        status: 'succeeded',
+      });
+      mockPhase4Lock('SUCCEEDED');
+      prisma.payment.update.mockResolvedValue({});
+      prisma.paymentStateHistory.create.mockResolvedValue({});
+
+      await service.processRefund(TENANT_ID, PAYMENT_ID);
+
+      expect(stripe.createRefund).toHaveBeenCalledWith(
+        expect.objectContaining({
+          connectedAccountPayment: false,
+          refundApplicationFee: false,
+        }),
       );
     });
 

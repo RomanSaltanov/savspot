@@ -48,6 +48,7 @@ export class PaymentsController {
     @Body() dto: ConnectAccountDto,
     @CurrentUser('email') email: string,
   ) {
+    this.paymentsService.assertStripeConnectMode();
     return this.stripeConnectService.createAccount(
       tenantId,
       email,
@@ -67,6 +68,7 @@ export class PaymentsController {
     @Param('tenantId', UuidValidationPipe) tenantId: string,
     @Body('returnUrl') returnUrl: string,
   ) {
+    this.paymentsService.assertStripeConnectMode();
     return this.stripeConnectService.getOnboardingLink(tenantId, returnUrl);
   }
 
@@ -80,7 +82,13 @@ export class PaymentsController {
   async getConnectStatus(
     @Param('tenantId', UuidValidationPipe) tenantId: string,
   ) {
-    return this.stripeConnectService.getStatus(tenantId);
+    if (this.paymentsService.getStripeAccountMode() === 'direct') {
+      return this.paymentsService.getDirectStripeStatus();
+    }
+    return {
+      mode: 'connect' as const,
+      ...(await this.stripeConnectService.getStatus(tenantId)),
+    };
   }
 
   /**
@@ -94,6 +102,7 @@ export class PaymentsController {
   async getDashboardLink(
     @Param('tenantId', UuidValidationPipe) tenantId: string,
   ) {
+    this.paymentsService.assertStripeConnectMode();
     return this.stripeConnectService.getDashboardLink(tenantId);
   }
 

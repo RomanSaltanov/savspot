@@ -16,10 +16,51 @@ export class PaymentsService {
     private readonly eventsService: EventsService,
   ) {}
 
+  getStripeAccountMode(): 'direct' | 'connect' {
+    return this.configService.get<'direct' | 'connect'>('stripe.accountMode', 'connect');
+  }
+
+  getDirectStripeStatus() {
+    const secretKeyConfigured = !!this.configService.get<string>('stripe.secretKey');
+    const publishableKeyConfigured = !!this.configService.get<string>('stripe.publishableKey');
+    const webhookConfigured = !!this.configService.get<string>('stripe.webhookSecret');
+
+    return {
+      mode: 'direct' as const,
+      accountId: null,
+      chargesEnabled: secretKeyConfigured,
+      payoutsEnabled: secretKeyConfigured,
+      detailsSubmitted: true,
+      onboarded: secretKeyConfigured && publishableKeyConfigured && webhookConfigured,
+      restricted: false,
+      requirements: null,
+      configuration: {
+        secretKeyConfigured,
+        publishableKeyConfigured,
+        webhookConfigured,
+      },
+    };
+  }
+
+  assertStripeConnectMode(): void {
+    if (this.getStripeAccountMode() !== 'connect') {
+      throw new BadRequestException(
+        'Stripe Connect is disabled because this deployment uses a direct Stripe account',
+      );
+    }
+  }
+
   /**
    * Fail before creating a pending booking when online payments are not ready.
    */
   async assertOnlinePaymentReady(tenantId: string): Promise<void> {
+    if (this.getStripeAccountMode() === 'direct') {
+      if (!this.getDirectStripeStatus().onboarded) {
+        throw new BadRequestException('Online payments are not configured for this business yet');
+      }
+      return;
+    }
+
     if (!this.configService.get<string>('stripe.secretKey')) {
       throw new BadRequestException('Online payments are not configured for this business yet');
     }
@@ -164,6 +205,8 @@ export class PaymentsService {
    * Returns the client_secret for frontend confirmation.
    */
   async processPaymentIntent(tenantId: string, bookingId: string, sessionId: string) {
+    const stripeAccountMode = this.getStripeAccountMode();
+
     // Load the booking with service (including depositConfig) and tenant info.
     // `client` is included so we can find-or-create a Stripe Customer with
     // their email for saved-card support on future bookings.
@@ -194,12 +237,14 @@ export class PaymentsService {
       throw new NotFoundException('Booking not found');
     }
 
-    if (!booking.tenant.paymentProviderOnboarded) {
-      throw new BadRequestException('Tenant payment provider not onboarded');
-    }
+    if (stripeAccountMode === 'connect') {
+      if (!booking.tenant.paymentProviderOnboarded) {
+        throw new BadRequestException('Tenant payment provider not onboarded');
+      }
 
-    if (!booking.tenant.paymentProviderAccountId) {
-      throw new BadRequestException('Tenant has no connected payment account');
+      if (!booking.tenant.paymentProviderAccountId) {
+        throw new BadRequestException('Tenant has no connected payment account');
+      }
     }
 
     const totalAmount = booking.totalAmount.toNumber();
@@ -224,17 +269,23 @@ export class PaymentsService {
     const chargeAmountCents = Math.round(chargeAmount * 100);
 
     // Calculate platform processing fee on the charge amount
-    const platformFeePercent = this.configService.get<number>('stripe.platformFeePercent', 1);
+    const platformFeePercent =
+      stripeAccountMode === 'connect'
+        ? this.configService.get<number>('stripe.platformFeePercent', 1)
+        : 0;
     const processingFeeCents = Math.round((chargeAmountCents * platformFeePercent) / 100);
     const platformFeeDollars = processingFeeCents / 100;
 
     // Calculate referral commission (on total booking amount, not deposit)
-    const referralCommissionCents = await this.calculateReferralCommission(
-      tenantId,
-      booking.clientId,
-      booking.source,
-      totalAmountCents,
-    );
+    const referralCommissionCents =
+      stripeAccountMode === 'connect'
+        ? await this.calculateReferralCommission(
+            tenantId,
+            booking.clientId,
+            booking.source,
+            totalAmountCents,
+          )
+        : null;
     const referralCommissionDollars = referralCommissionCents
       ? referralCommissionCents / 100
       : null;
@@ -294,8 +345,12 @@ export class PaymentsService {
     const intentResult = await this.stripeProvider.createPaymentIntent({
       amount: chargeAmountCents,
       currency: booking.currency.toLowerCase(),
-      connectedAccountId: booking.tenant.paymentProviderAccountId,
-      platformFeeAmount: totalPlatformFee,
+      ...(stripeAccountMode === 'connect'
+        ? {
+            connectedAccountId: booking.tenant.paymentProviderAccountId!,
+            platformFeeAmount: totalPlatformFee,
+          }
+        : {}),
       customerId: stripeCustomerId,
       setupFutureUsage: stripeCustomerId ? 'off_session' : undefined,
       metadata: {
@@ -303,6 +358,7 @@ export class PaymentsService {
         bookingId,
         sessionId,
         serviceId: booking.serviceId,
+        stripeAccountMode,
       },
     });
 
@@ -325,6 +381,7 @@ export class PaymentsService {
             sessionId,
             totalBookingAmount: totalAmountCents,
             depositConfig: depositConfig ?? undefined,
+            stripeAccountMode,
           } as Prisma.InputJsonValue,
         },
       });
@@ -651,6 +708,7 @@ export class PaymentsService {
         status: true,
         providerTransactionId: true,
         amount: true,
+        metadata: true,
       },
     });
 
@@ -695,12 +753,15 @@ export class PaymentsService {
     // If two concurrent refund attempts slip through the optimistic check,
     // Stripe's own validation rejects any that would over-refund.
     const willBeFullRefund = priorRefundedCents + newRefundCents >= paymentAmountCents;
+    const paymentMetadata = payment.metadata as Record<string, unknown> | null;
+    const connectedAccountPayment = paymentMetadata?.['stripeAccountMode'] !== 'direct';
     const refundResult = await this.stripeProvider.createRefund({
       paymentIntentId: payment.providerTransactionId,
       amount: newRefundCents,
       reason: 'requested_by_customer',
       tenantId,
-      refundApplicationFee: willBeFullRefund,
+      connectedAccountPayment,
+      refundApplicationFee: connectedAccountPayment && willBeFullRefund,
     });
 
     // Phase 4: short transaction to update local status. Lock + re-check

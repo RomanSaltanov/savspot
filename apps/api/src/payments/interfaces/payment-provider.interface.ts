@@ -1,8 +1,8 @@
 export interface CreatePaymentIntentParams {
   amount: number; // in minor units (cents)
   currency: string;
-  connectedAccountId: string;
-  platformFeeAmount: number;
+  connectedAccountId?: string;
+  platformFeeAmount?: number;
   metadata: Record<string, string>;
   customerId?: string;
   // When set, Stripe saves the payment method to the customer for reuse.
@@ -30,6 +30,8 @@ export interface CreateRefundParams {
   // so callers should only set this on full refunds to avoid losing the
   // platform fee on a partial. Default false.
   refundApplicationFee?: boolean;
+  // Direct-account charges must not use Connect-only refund flags.
+  connectedAccountPayment?: boolean;
 }
 
 export interface RefundResult {

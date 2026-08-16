@@ -131,6 +131,10 @@ export const envSchema = z.object({
     .optional(),
 
   // ---- Stripe (payments) ----
+  STRIPE_ACCOUNT_MODE: z
+    .enum(['direct', 'connect'])
+    .default('connect'),
+
   STRIPE_SECRET_KEY: z
     .string()
     .optional(),

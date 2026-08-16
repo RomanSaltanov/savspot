@@ -19,6 +19,7 @@ import { RequireRole } from '@/components/rbac/require-role';
 // ---------- Types ----------
 
 interface ConnectStatus {
+  mode: 'direct' | 'connect';
   accountId: string | null;
   chargesEnabled: boolean;
   payoutsEnabled: boolean;
@@ -30,6 +31,11 @@ interface ConnectStatus {
     pastDue: string[];
     disabledReason: string | null;
   } | null;
+  configuration?: {
+    secretKeyConfigured: boolean;
+    publishableKeyConfigured: boolean;
+    webhookConfigured: boolean;
+  };
 }
 
 // ---------- Component ----------
@@ -59,6 +65,7 @@ export default function PaymentsSettingsPage() {
       } catch (err) {
         // If 404 or no account, treat as not connected
         setStatus({
+          mode: 'connect',
           accountId: null,
           chargesEnabled: false,
           payoutsEnabled: false,
@@ -139,14 +146,22 @@ export default function PaymentsSettingsPage() {
     }
   };
 
+  const handleOpenDirectDashboard = () => {
+    window.open('https://dashboard.stripe.com/', '_blank', 'noopener,noreferrer');
+  };
+
   // Determine connection state
-  const isNotConnected = !status?.accountId;
+  const isDirectMode = status?.mode === 'direct';
+  const isConnectMode = status?.mode === 'connect';
+  const isNotConnected = isConnectMode && !status?.accountId;
   const isPartiallyConnected =
-    status?.accountId && !status.onboarded;
-  const isFullyConnected = status?.onboarded && !status?.restricted;
+    isConnectMode && !!status?.accountId && !status.onboarded;
+  const isFullyConnected =
+    isConnectMode && status?.onboarded && !status?.restricted;
   // Restricted = onboarded once, but Stripe needs more info before charges
   // can continue. Surface as an actionable warning, not as "fully connected".
-  const isRestricted = status?.onboarded && status?.restricted;
+  const isRestricted =
+    isConnectMode && status?.onboarded && status?.restricted;
 
   // ---------- Loading ----------
 
@@ -190,7 +205,9 @@ export default function PaymentsSettingsPage() {
         <div>
           <h2 className="text-lg font-semibold">Payment Settings</h2>
           <p className="text-sm text-muted-foreground">
-            Connect your Stripe account to accept online payments
+            {isDirectMode
+              ? 'Accept online payments through this deployment’s Stripe account'
+              : 'Connect your Stripe account to accept online payments'}
           </p>
         </div>
       </div>
@@ -199,6 +216,81 @@ export default function PaymentsSettingsPage() {
         <div role="alert" className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
           {error}
         </div>
+      )}
+
+      {/* Direct account — configured once by the deployment owner */}
+      {isDirectMode && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-3">
+              <CardTitle className="text-base">Direct Stripe Account</CardTitle>
+              <Badge
+                className={
+                  status?.onboarded
+                    ? 'bg-green-100 text-green-800'
+                    : 'bg-yellow-100 text-yellow-800'
+                }
+              >
+                {status?.onboarded ? 'Ready' : 'Configuration Required'}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div className="flex items-start gap-3">
+                {status?.onboarded ? (
+                  <CheckCircle2 className="mt-0.5 h-5 w-5 text-green-600" />
+                ) : (
+                  <AlertCircle className="mt-0.5 h-5 w-5 text-yellow-600" />
+                )}
+                <p className="text-sm">
+                  {status?.onboarded
+                    ? 'Online payments go directly to the Stripe account configured for this deployment. Stripe Connect onboarding is not required.'
+                    : 'The deployment owner must finish the Stripe configuration before customers can pay online.'}
+                </p>
+              </div>
+
+              <Separator />
+
+              <div className="space-y-3">
+                <h4 className="text-sm font-medium">Configuration Status</h4>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <StatusIndicator
+                    label="Secret Key"
+                    enabled={status?.configuration?.secretKeyConfigured ?? false}
+                  />
+                  <StatusIndicator
+                    label="Publishable Key"
+                    enabled={status?.configuration?.publishableKeyConfigured ?? false}
+                  />
+                  <StatusIndicator
+                    label="Webhook"
+                    enabled={status?.configuration?.webhookConfigured ?? false}
+                  />
+                </div>
+              </div>
+
+              <Separator />
+
+              <Button
+                variant="outline"
+                onClick={handleOpenDirectDashboard}
+                className="w-full sm:w-auto"
+              >
+                <ExternalLink className="mr-2 h-4 w-4" />
+                Open Stripe Dashboard
+              </Button>
+
+              <div className="rounded-md bg-muted p-3">
+                <p className="text-xs text-muted-foreground">
+                  No SavSpot platform fee or Connected Account transfer is
+                  added in direct mode. Standard Stripe processing fees still
+                  apply.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Not Connected */}

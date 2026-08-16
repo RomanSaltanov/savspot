@@ -188,12 +188,17 @@ export class StripeProvider implements PaymentProviderInterface {
     const intentParams: Stripe.PaymentIntentCreateParams = {
       amount: params.amount,
       currency: params.currency,
-      application_fee_amount: params.platformFeeAmount,
-      transfer_data: {
-        destination: params.connectedAccountId,
-      },
       metadata: params.metadata,
     };
+
+    if (params.connectedAccountId) {
+      intentParams.transfer_data = {
+        destination: params.connectedAccountId,
+      };
+      if (params.platformFeeAmount !== undefined) {
+        intentParams.application_fee_amount = params.platformFeeAmount;
+      }
+    }
 
     if (params.customerId) {
       intentParams.customer = params.customerId;
@@ -248,14 +253,17 @@ export class StripeProvider implements PaymentProviderInterface {
 
     const refundParams: Stripe.RefundCreateParams = {
       payment_intent: params.paymentIntentId,
+    };
+
+    if (params.connectedAccountPayment) {
       // Destination charges: reverse the transfer so the refund comes out of
       // the connected account, not the platform balance.
-      reverse_transfer: true,
+      refundParams.reverse_transfer = true;
       // refund_application_fee applies to the ENTIRE platform fee, not a
       // proportional share, so only set it on full refunds. Caller is
       // responsible for computing this flag based on cumulative refund total.
-      refund_application_fee: params.refundApplicationFee ?? false,
-    };
+      refundParams.refund_application_fee = params.refundApplicationFee ?? false;
+    }
 
     if (params.amount !== undefined) {
       refundParams.amount = params.amount;
