@@ -7,6 +7,7 @@ import { DevicePushTokensModule } from '../device-push-tokens/device-push-tokens
 import { NotificationsModule } from '../notifications/notifications.module';
 import { WorkflowEngineService } from './workflow-engine.service';
 import { WorkflowsController } from './workflows.controller';
+import { WorkflowAutomationsController } from './workflow-automations.controller';
 import { WebhooksController } from './webhooks.controller';
 import { TemplateService } from './services/template.service';
 import { StageService } from './services/stage.service';
@@ -26,7 +27,7 @@ import { StageExecutionHandler } from './processors/stage-execution.handler';
     DevicePushTokensModule,
     NotificationsModule,
   ],
-  controllers: [WorkflowsController, WebhooksController],
+  controllers: [WorkflowsController, WorkflowAutomationsController, WebhooksController],
   providers: [
     WorkflowEngineService,
     TemplateService,
