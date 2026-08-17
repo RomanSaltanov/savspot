@@ -269,6 +269,15 @@ export class TenantsService {
         ),
       );
 
+      // Create default booking flow
+      await tx.bookingFlow.create({
+        data: {
+          tenantId,
+          name: 'Default',
+          isDefault: true,
+        },
+      });
+
       return {
         servicesCreated: services.length,
         availabilityRulesCreated: availabilityRules.length,

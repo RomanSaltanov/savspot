@@ -38,7 +38,11 @@ export class BookingFlowService {
         where: { tenantId },
       });
       if (!anyFlow) {
-        throw new NotFoundException('No booking flow configured for this tenant');
+        // Lazy-init: create default flow on first access
+        const created = await this.prisma.bookingFlow.create({
+          data: { tenantId, name: 'Default', isDefault: true },
+        });
+        return this.resolveFlowWithSteps(tenantId, created);
       }
       return this.resolveFlowWithSteps(tenantId, anyFlow);
     }
