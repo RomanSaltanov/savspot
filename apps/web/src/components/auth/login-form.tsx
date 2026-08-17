@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/form';
 import { useAuth } from '@/hooks/use-auth';
 import { ROUTES } from '@/lib/constants';
+import { MANAGED_HOSTING_CLOSED } from '@/lib/managed-hosting';
 import { ApiError } from '@/lib/api-client';
 import { GoogleButton } from './google-button';
 import { AppleButton } from './apple-button';
@@ -160,15 +161,17 @@ export function LoginForm() {
         </form>
       </Form>
 
-      <p className="text-center text-sm text-muted-foreground">
-        Don&apos;t have an account?{' '}
-        <Link
-          href={ROUTES.REGISTER}
-          className="font-medium text-primary hover:underline"
-        >
-          Sign up
-        </Link>
-      </p>
+      {!MANAGED_HOSTING_CLOSED && (
+        <p className="text-center text-sm text-muted-foreground">
+          Don&apos;t have an account?{' '}
+          <Link
+            href={ROUTES.REGISTER}
+            className="font-medium text-primary hover:underline"
+          >
+            Sign up
+          </Link>
+        </p>
+      )}
     </div>
   );
 }

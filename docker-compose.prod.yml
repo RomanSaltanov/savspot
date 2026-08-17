@@ -147,6 +147,7 @@ services:
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
         NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
+        NEXT_PUBLIC_MANAGED_HOSTING_CLOSED: ${MANAGED_HOSTING_CLOSED:-false}
     container_name: savspot-web
     restart: unless-stopped
     environment:
