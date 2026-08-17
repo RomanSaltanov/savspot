@@ -85,8 +85,11 @@ services:
       SUPABASE_URL: ${SUPABASE_URL:-}
       SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
       SUPABASE_STORAGE_BUCKET: ${SUPABASE_STORAGE_BUCKET:-savspot-uploads}
-      INNGEST_EVENT_KEY: ${INNGEST_EVENT_KEY:-}
-      INNGEST_SIGNING_KEY: ${INNGEST_SIGNING_KEY:-}
+      INNGEST_EVENT_KEY: ${INNGEST_EVENT_KEY:?Set INNGEST_EVENT_KEY in .env}
+      INNGEST_SIGNING_KEY: ${INNGEST_SIGNING_KEY:?Set INNGEST_SIGNING_KEY in .env}
+      INNGEST_BASE_URL: http://inngest:8288
+      INNGEST_SERVE_HOST: http://api:3001
+      INNGEST_SERVE_PATH: /api/inngest
       STRIPE_ACCOUNT_MODE: ${STRIPE_ACCOUNT_MODE:-connect}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
@@ -105,13 +108,32 @@ services:
       start_period: 30s
       retries: 3
 
-  # ── Background Jobs ───────────────────────────────────────────────────────
-  # No separate worker container. Background jobs (crons + events) are Inngest
-  # functions served by the `api` container at /api/inngest. Point an Inngest
-  # instance — Inngest Cloud or the self-hosted dev server — at that endpoint
-  # to drive them. BullMQ + Redis were retired in the Fly → Supabase+Vercel
-  # migration; the API's KV needs now run on Postgres (the `cache_entries`
-  # table), so no Redis service is required.
+  # ── Background Jobs (Inngest self-hosted server) ──────────────────────────
+  # Receives events from the API (via inngest.send()), then calls back to the
+  # API at /api/inngest to execute the matching function. Monitoring UI
+  # available at http://<host>:8288 — restrict access in firewall if needed.
+  inngest:
+    image: inngest/inngest:latest
+    container_name: savspot-inngest
+    restart: unless-stopped
+    command: ["inngest", "start"]
+    environment:
+      INNGEST_EVENT_KEY: ${INNGEST_EVENT_KEY:?Set INNGEST_EVENT_KEY in .env}
+      INNGEST_SIGNING_KEY: ${INNGEST_SIGNING_KEY:?Set INNGEST_SIGNING_KEY in .env}
+      INNGEST_LOG_LEVEL: ${INNGEST_LOG_LEVEL:-info}
+    ports:
+      - "${INNGEST_PORT:-8288}:8288"
+    volumes:
+      - inngest_data:/var/lib/inngest
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8288/health"]
+      interval: 15s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    depends_on:
+      api:
+        condition: service_healthy
 
   # ── Web Frontend ──────────────────────────────────────────────────────────
   web:
@@ -162,5 +184,6 @@ services:
 
 volumes:
   postgres_data:
+  inngest_data:
   caddy_data:
   caddy_config:

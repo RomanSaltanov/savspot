@@ -130,6 +130,20 @@ export const envSchema = z.object({
     .string()
     .optional(),
 
+  INNGEST_BASE_URL: z
+    .string()
+    .url()
+    .optional(),
+
+  INNGEST_SERVE_HOST: z
+    .string()
+    .url()
+    .optional(),
+
+  INNGEST_SERVE_PATH: z
+    .string()
+    .optional(),
+
   // ---- Stripe (payments) ----
   STRIPE_ACCOUNT_MODE: z
     .enum(['direct', 'connect'])
