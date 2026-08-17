@@ -19,6 +19,13 @@ async function bootstrap() {
   if (process.env['NODE_ENV'] !== 'production') {
     logger.log(`API docs available at http://localhost:${port}/docs`);
   }
+
+  if (process.env['INNGEST_BASE_URL']) {
+    fetch(`http://localhost:${port}/api/inngest`, { method: 'PUT' })
+      .then((r) => r.json())
+      .then((body) => logger.log(`Inngest sync: ${JSON.stringify(body)}`))
+      .catch((err) => logger.warn(`Inngest sync failed: ${err.message}`));
+  }
 }
 
 bootstrap().catch((err) => {
