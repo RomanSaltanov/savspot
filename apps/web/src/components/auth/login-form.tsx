@@ -42,7 +42,10 @@ export function LoginForm() {
     const oauthError = searchParams.get('error');
 
     if (oauthError) {
-      setError('Social sign-in failed. Please try again.');
+      const msg = oauthError === 'google_auth_failed'
+        ? 'Social sign-in failed. Please try again.'
+        : oauthError;
+      setError(msg);
       return;
     }
 
