@@ -31,7 +31,7 @@ export class WorkflowAutomationsController {
 
     return automations.map((a) => ({
       id: a.id,
-      name: (a.actionConfig as Record<string, unknown>)?.description ?? a.triggerEvent,
+      name: (a.actionConfig as Record<string, unknown>)?.['description'] ?? a.triggerEvent,
       triggerEvent: a.triggerEvent,
       actions: [{ type: a.actionType, config: a.actionConfig }],
       active: a.isActive,
@@ -87,7 +87,7 @@ export class WorkflowAutomationsController {
 
     return {
       id: automation.id,
-      name: (automation.actionConfig as Record<string, unknown>)?.description ?? automation.triggerEvent,
+      name: (automation.actionConfig as Record<string, unknown>)?.['description'] ?? automation.triggerEvent,
       triggerEvent: automation.triggerEvent,
       actions: [{ type: automation.actionType, config: automation.actionConfig }],
       active: automation.isActive,
