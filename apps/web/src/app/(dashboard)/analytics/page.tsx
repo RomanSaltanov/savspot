@@ -21,25 +21,25 @@ import { UpgradeBanner } from '@/components/upgrade-banner';
 
 interface AnalyticsOverview {
   totalBookings: number;
-  totalRevenue: string;
-  totalClients: number;
-  averageBookingValue: string;
-  completionRate: number;
-  cancellationRate: number;
+  totalRevenue: number;
+  avgBookingValue: number;
+  completedBookings: number;
+  cancelledBookings: number;
+  noShowRate: number;
 }
 
 interface RevenueData {
   period: string;
-  revenue: string;
-  bookings: number;
+  revenue: number;
+  bookingCount: number;
 }
 
 interface StaffPerformance {
   staffId: string;
   staffName: string;
   totalBookings: number;
-  revenue: string;
-  averageRating: number;
+  totalRevenue: number;
+  avgRating: number;
   completionRate: number;
 }
 
@@ -171,6 +171,13 @@ export default function AnalyticsPage() {
 
   // ---------- Stat cards ----------
 
+  const completionRate = overview && overview.totalBookings > 0
+    ? overview.completedBookings / overview.totalBookings
+    : 0;
+  const cancellationRate = overview && overview.totalBookings > 0
+    ? overview.cancelledBookings / overview.totalBookings
+    : 0;
+
   const primaryStatCards = [
     {
       name: 'Total Bookings',
@@ -180,21 +187,21 @@ export default function AnalyticsPage() {
     },
     {
       name: 'Total Revenue',
-      value: overview ? formatAmount(overview.totalRevenue, 'USD') : '$0.00',
+      value: overview ? formatAmount(String(overview.totalRevenue), 'GBP') : '£0.00',
       icon: DollarSign,
       description: 'All time revenue',
     },
     {
-      name: 'Total Clients',
-      value: overview ? String(overview.totalClients) : '0',
+      name: 'Completed',
+      value: overview ? String(overview.completedBookings) : '0',
       icon: Users,
-      description: 'Unique clients served',
+      description: 'Bookings completed',
     },
     {
       name: 'Avg Booking Value',
       value: overview
-        ? formatAmount(overview.averageBookingValue, 'USD')
-        : '$0.00',
+        ? formatAmount(String(overview.avgBookingValue), 'GBP')
+        : '£0.00',
       icon: TrendingUp,
       description: 'Average per booking',
     },
@@ -203,13 +210,13 @@ export default function AnalyticsPage() {
   const secondaryStatCards = [
     {
       name: 'Completion Rate',
-      value: overview ? formatPercentage(overview.completionRate) : '0.0%',
+      value: overview ? formatPercentage(completionRate) : '0.0%',
       icon: CheckCircle,
       description: 'Bookings completed',
     },
     {
       name: 'Cancellation Rate',
-      value: overview ? formatPercentage(overview.cancellationRate) : '0.0%',
+      value: overview ? formatPercentage(cancellationRate) : '0.0%',
       icon: XCircle,
       description: 'Bookings cancelled',
     },
@@ -369,9 +376,9 @@ export default function AnalyticsPage() {
                   <TableRow key={row.period}>
                     <TableCell>{row.period}</TableCell>
                     <TableCell className="font-medium">
-                      {formatAmount(row.revenue, 'USD')}
+                      {formatAmount(String(row.revenue), 'GBP')}
                     </TableCell>
-                    <TableCell>{row.bookings}</TableCell>
+                    <TableCell>{row.bookingCount}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -415,10 +422,10 @@ export default function AnalyticsPage() {
                       {staff.staffName}
                     </TableCell>
                     <TableCell>{staff.totalBookings}</TableCell>
-                    <TableCell>{formatAmount(staff.revenue, 'USD')}</TableCell>
+                    <TableCell>{formatAmount(String(staff.totalRevenue), 'GBP')}</TableCell>
                     <TableCell>
-                      {staff.averageRating > 0
-                        ? staff.averageRating.toFixed(1)
+                      {staff.avgRating > 0
+                        ? staff.avgRating.toFixed(1)
                         : '-'}
                     </TableCell>
                     <TableCell>
