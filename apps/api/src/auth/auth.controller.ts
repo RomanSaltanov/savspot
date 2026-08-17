@@ -270,17 +270,30 @@ export class AuthController {
   @Public()
   @SkipThrottle()
   @Get('google/callback')
-  @UseGuards(AuthGuard('google'))
   @ApiOperation({ summary: 'Google OAuth callback' })
   async googleCallback(
     @Req() req: Request,
     @Res() res: Response,
   ) {
     const webUrl = this.configService.get<string>('WEB_URL', 'http://localhost:3000');
-    const user = req.user as Record<string, unknown> | undefined;
+
+    // Manually invoke Passport to catch strategy errors gracefully
+    let oauthError = 'google_auth_failed';
+    const user = await new Promise<Record<string, unknown> | null>((resolve) => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const passport = require('passport');
+      passport.authenticate('google', { session: false }, (err: Error | null, u: Record<string, unknown> | false) => {
+        if (err || !u) {
+          oauthError = err?.message || 'google_auth_failed';
+          resolve(null);
+          return;
+        }
+        resolve(u);
+      })(req, res);
+    });
 
     if (!user || !user['id']) {
-      return res.redirect(`${webUrl}/login?error=google_auth_failed`);
+      return res.redirect(`${webUrl}/login?error=${encodeURIComponent(oauthError)}`);
     }
 
     try {
