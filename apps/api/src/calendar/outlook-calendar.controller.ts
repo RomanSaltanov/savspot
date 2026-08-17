@@ -49,7 +49,7 @@ export class OutlookCalendarController {
   @ApiResponse({ status: 201, description: 'Authorization URL returned' })
   async connect(
     @Param('tenantId', UuidValidationPipe) tenantId: string,
-    @CurrentUser('id') userId: string,
+    @CurrentUser('sub') userId: string,
   ) {
     const authUrl = this.outlookCalendarService.getAuthUrl(tenantId, userId);
     return { authUrl };

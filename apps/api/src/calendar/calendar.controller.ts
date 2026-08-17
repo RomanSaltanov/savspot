@@ -54,8 +54,8 @@ export class CalendarController {
   @ApiResponse({ status: 201, description: 'Authorization URL returned' })
   async connect(
     @Param('tenantId', UuidValidationPipe) tenantId: string,
-    @CurrentUser('id') userId: string,
-    @Body() _: ConnectCalendarDto,  
+    @CurrentUser('sub') userId: string,
+    @Body() _: ConnectCalendarDto,
   ) {
     const authUrl = this.calendarService.getAuthUrl(tenantId, userId);
     return { authUrl };
