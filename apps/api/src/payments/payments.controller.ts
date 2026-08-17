@@ -85,9 +85,11 @@ export class PaymentsController {
     if (this.paymentsService.getStripeAccountMode() === 'direct') {
       return this.paymentsService.getDirectStripeStatus();
     }
+    const status = await this.stripeConnectService.getStatus(tenantId);
     return {
       mode: 'connect' as const,
-      ...(await this.stripeConnectService.getStatus(tenantId)),
+      connected: status.onboarded && status.chargesEnabled,
+      ...status,
     };
   }
 

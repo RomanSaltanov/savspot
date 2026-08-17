@@ -25,13 +25,15 @@ export class PaymentsService {
     const publishableKeyConfigured = !!this.configService.get<string>('stripe.publishableKey');
     const webhookConfigured = !!this.configService.get<string>('stripe.webhookSecret');
 
+    const onboarded = secretKeyConfigured && publishableKeyConfigured && webhookConfigured;
     return {
       mode: 'direct' as const,
+      connected: onboarded,
       accountId: null,
       chargesEnabled: secretKeyConfigured,
       payoutsEnabled: secretKeyConfigured,
       detailsSubmitted: true,
-      onboarded: secretKeyConfigured && publishableKeyConfigured && webhookConfigured,
+      onboarded,
       restricted: false,
       requirements: null,
       configuration: {
