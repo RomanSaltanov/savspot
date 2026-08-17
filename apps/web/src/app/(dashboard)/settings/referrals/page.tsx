@@ -88,7 +88,7 @@ export default function ReferralsSettingsPage() {
 
     try {
       const data = await apiClient.get<Referral[]>(
-        `/api/tenants/${tenantId}/referrals`,
+        `/api/tenants/${tenantId}/referral-links`,
       );
       setReferrals(Array.isArray(data) ? data : []);
     } catch (err) {
@@ -157,7 +157,7 @@ export default function ReferralsSettingsPage() {
       };
 
       await apiClient.post(
-        `/api/tenants/${tenantId}/referrals`,
+        `/api/tenants/${tenantId}/referral-links`,
         payload,
       );
       setSuccess('Referral created successfully');
@@ -183,7 +183,7 @@ export default function ReferralsSettingsPage() {
 
     try {
       await apiClient.del(
-        `/api/tenants/${tenantId}/referrals/${deactivatingReferral.id}`,
+        `/api/tenants/${tenantId}/referral-links/${deactivatingReferral.id}`,
       );
       setDeactivateDialogOpen(false);
       setDeactivatingReferral(null);
