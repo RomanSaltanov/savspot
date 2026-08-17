@@ -60,6 +60,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: "3001"
+      MANAGED_HOSTING_CLOSED: ${MANAGED_HOSTING_CLOSED:-false}
       DATABASE_URL: postgresql://${POSTGRES_USER:-savspot}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-savspot}?schema=public
       WEB_URL: ${WEB_URL:-http://localhost}
       COOKIE_DOMAIN: ${COOKIE_DOMAIN}
