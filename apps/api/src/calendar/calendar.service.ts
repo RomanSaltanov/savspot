@@ -206,7 +206,7 @@ export class GoogleCalendarService {
    * List all calendar connections for a tenant.
    */
   async getConnections(tenantId: string) {
-    return this.prisma.calendarConnection.findMany({
+    const connections = await this.prisma.calendarConnection.findMany({
       where: { tenantId },
       select: {
         id: true,
@@ -225,6 +225,17 @@ export class GoogleCalendarService {
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    const directionMap: Record<string, string> = {
+      TWO_WAY: 'BIDIRECTIONAL',
+      ONE_WAY: 'OUTBOUND',
+    };
+
+    return connections.map((c) => ({
+      ...c,
+      accountEmail: c.user?.email ?? null,
+      syncDirection: directionMap[c.syncDirection] ?? c.syncDirection,
+    }));
   }
 
   /**
@@ -237,13 +248,15 @@ export class GoogleCalendarService {
     const calendarApi = calendar({ version: 'v3', auth: oauth2Client });
     const res = await calendarApi.calendarList.list();
 
+    const syncCalendars = (connection.syncCalendars as unknown as Array<{ id: string }>) || [];
+    const selectedIds = new Set(syncCalendars.map((c) => c.id));
+
     return (res.data.items || []).map((cal) => ({
       id: cal.id,
-      summary: cal.summary,
-      description: cal.description,
-      primary: cal.primary || false,
-      backgroundColor: cal.backgroundColor,
-      accessRole: cal.accessRole,
+      externalCalendarId: cal.id,
+      name: cal.summary || '(Untitled)',
+      isPrimary: cal.primary || false,
+      isSelected: selectedIds.has(cal.id!),
     }));
   }
 
@@ -255,7 +268,7 @@ export class GoogleCalendarService {
     data: {
       syncFrequencyMinutes?: number;
       syncCalendars?: string[];
-      syncDirection?: 'ONE_WAY' | 'TWO_WAY';
+      syncDirection?: 'ONE_WAY' | 'TWO_WAY' | 'OUTBOUND' | 'BIDIRECTIONAL';
     },
   ) {
     const connection = await this.prisma.calendarConnection.findUnique({
@@ -266,6 +279,14 @@ export class GoogleCalendarService {
       throw new NotFoundException('Calendar connection not found');
     }
 
+    const directionToDb: Record<string, string> = {
+      OUTBOUND: 'ONE_WAY',
+      BIDIRECTIONAL: 'TWO_WAY',
+    };
+    const dbDirection = data.syncDirection
+      ? (directionToDb[data.syncDirection] ?? data.syncDirection)
+      : undefined;
+
     return this.prisma.calendarConnection.update({
       where: { id: connectionId },
       data: {
@@ -273,7 +294,7 @@ export class GoogleCalendarService {
         syncCalendars: data.syncCalendars
           ? (data.syncCalendars as unknown as Prisma.InputJsonValue)
           : undefined,
-        syncDirection: data.syncDirection,
+        syncDirection: dbDirection as 'ONE_WAY' | 'TWO_WAY' | undefined,
       },
     });
   }
