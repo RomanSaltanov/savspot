@@ -109,7 +109,7 @@ export default function CommunicationsSettingsPage() {
 
     try {
       const data = await apiClient.get<Template[]>(
-        `/api/tenants/${tenantId}/communications/templates`,
+        `/api/tenants/${tenantId}/communication-templates`,
       );
       if (Array.isArray(data)) {
         setTemplates(data);
