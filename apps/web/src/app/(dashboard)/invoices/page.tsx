@@ -19,13 +19,15 @@ import { formatAmount, formatStatus } from '@/lib/format-utils';
 interface Invoice {
   id: string;
   invoiceNumber: string;
-  clientName: string;
-  clientEmail: string;
-  amount: string;
+  total: string;
   currency: string;
   status: 'DRAFT' | 'SENT' | 'PAID' | 'OVERDUE' | 'VOID';
   dueDate: string;
   createdAt: string;
+  booking: {
+    id: string;
+    client: { id: string; name: string; email: string };
+  };
 }
 
 interface InvoicesResponse {
@@ -290,15 +292,15 @@ export default function InvoicesPage() {
                       <TableCell>
                         <div className="min-w-0">
                           <div className="truncate font-medium">
-                            {invoice.clientName}
+                            {invoice.booking?.client?.name}
                           </div>
                           <div className="hidden text-xs text-muted-foreground sm:block">
-                            {invoice.clientEmail}
+                            {invoice.booking?.client?.email}
                           </div>
                         </div>
                       </TableCell>
                       <TableCell className="hidden whitespace-nowrap font-medium md:table-cell">
-                        {formatAmount(invoice.amount, invoice.currency)}
+                        {formatAmount(invoice.total, invoice.currency)}
                       </TableCell>
                       <TableCell>
                         <Badge
