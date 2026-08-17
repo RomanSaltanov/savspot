@@ -119,7 +119,7 @@ services:
     command: ["inngest", "start"]
     environment:
       INNGEST_EVENT_KEY: ${INNGEST_EVENT_KEY:?Set INNGEST_EVENT_KEY in .env}
-      INNGEST_SIGNING_KEY: ${INNGEST_SIGNING_KEY:?Set INNGEST_SIGNING_KEY in .env}
+      INNGEST_SIGNING_KEY: ${INNGEST_SIGNING_KEY_RAW:?Set INNGEST_SIGNING_KEY_RAW in .env}
       INNGEST_LOG_LEVEL: ${INNGEST_LOG_LEVEL:-info}
     ports:
       - "${INNGEST_PORT:-8288}:8288"
