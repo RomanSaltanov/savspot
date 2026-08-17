@@ -13,6 +13,7 @@ import {
 import { Button, Card, CardContent, CardHeader, CardTitle, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Table, TableHeader, TableBody, TableRow, TableHead, TableCell, Skeleton } from '@savspot/ui';
 import { ApiError, apiClient, isSubscriptionError, parseRequiredTier } from '@/lib/api-client';
 import { useTenant } from '@/hooks/use-tenant';
+import { usePaymentStats } from '@/hooks/use-api/payments';
 import { RequireRole } from '@/components/rbac/require-role';
 import { formatAmount } from '@/lib/format-utils';
 import { UpgradeBanner } from '@/components/upgrade-banner';
@@ -89,6 +90,8 @@ function getDateRange(period: string): { from: string; to: string } {
 
 export default function AnalyticsPage() {
   const { tenantId } = useTenant();
+  const { data: paymentStats } = usePaymentStats();
+  const currency = paymentStats?.currency ?? 'GBP';
 
   // Data state
   const [overview, setOverview] = useState<AnalyticsOverview | null>(null);
@@ -187,7 +190,7 @@ export default function AnalyticsPage() {
     },
     {
       name: 'Total Revenue',
-      value: overview ? formatAmount(String(overview.totalRevenue), 'GBP') : '£0.00',
+      value: overview ? formatAmount(String(overview.totalRevenue), currency) : formatAmount('0', currency),
       icon: DollarSign,
       description: 'All time revenue',
     },
@@ -200,8 +203,8 @@ export default function AnalyticsPage() {
     {
       name: 'Avg Booking Value',
       value: overview
-        ? formatAmount(String(overview.avgBookingValue), 'GBP')
-        : '£0.00',
+        ? formatAmount(String(overview.avgBookingValue), currency)
+        : formatAmount('0', currency),
       icon: TrendingUp,
       description: 'Average per booking',
     },
@@ -376,7 +379,7 @@ export default function AnalyticsPage() {
                   <TableRow key={row.period}>
                     <TableCell>{row.period}</TableCell>
                     <TableCell className="font-medium">
-                      {formatAmount(String(row.revenue), 'GBP')}
+                      {formatAmount(String(row.revenue), currency)}
                     </TableCell>
                     <TableCell>{row.bookingCount}</TableCell>
                   </TableRow>
@@ -422,7 +425,7 @@ export default function AnalyticsPage() {
                       {staff.staffName}
                     </TableCell>
                     <TableCell>{staff.totalBookings}</TableCell>
-                    <TableCell>{formatAmount(String(staff.totalRevenue), 'GBP')}</TableCell>
+                    <TableCell>{formatAmount(String(staff.totalRevenue), currency)}</TableCell>
                     <TableCell>
                       {staff.avgRating > 0
                         ? staff.avgRating.toFixed(1)
