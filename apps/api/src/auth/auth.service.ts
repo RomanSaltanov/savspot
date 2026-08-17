@@ -6,6 +6,7 @@ import {
   BadRequestException,
   Logger,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -32,6 +33,7 @@ export class AuthService {
     private readonly passwordService: PasswordService,
     private readonly emailService: EmailService,
     private readonly supabaseAuth: SupabaseAuthService,
+    private readonly configService: ConfigService,
   ) {}
 
   /**
@@ -390,6 +392,13 @@ export class AuthService {
           },
         });
       } else {
+        // Block new sign-ups when managed hosting is closed
+        const closed = this.configService.get<string>('MANAGED_HOSTING_CLOSED') === 'true';
+        if (closed) {
+          throw new UnauthorizedException(
+            'New sign-ups are not being accepted on this instance.',
+          );
+        }
         // Create new user
         user = await this.prisma.user.create({
           data: {
@@ -434,6 +443,12 @@ export class AuthService {
           },
         });
       } else {
+        const closed = this.configService.get<string>('MANAGED_HOSTING_CLOSED') === 'true';
+        if (closed) {
+          throw new UnauthorizedException(
+            'New sign-ups are not being accepted on this instance.',
+          );
+        }
         user = await this.prisma.user.create({
           data: {
             email: profile.email.toLowerCase(),
