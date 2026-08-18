@@ -411,11 +411,9 @@ describe('ClientsService', () => {
       expect(result.phone).toBe('+1234567890');
       expect(result.totalBookings).toBe(8);
       expect(result.totalRevenue).toBe(400.0);
-      expect(result.lastVisitDate).toEqual(new Date('2026-02-25T16:00:00Z'));
-      expect(result.firstVisitDate).toEqual(new Date('2025-11-15T10:00:00Z'));
-      expect(result.noShowCount).toBe(2);
-      expect(result.clientCreatedAt).toEqual(new Date('2025-10-01T08:00:00Z'));
-      expect(result.profileCreatedAt).toEqual(new Date('2026-01-15T10:00:00Z'));
+      expect(result.lastVisit).toEqual(new Date('2026-02-25T16:00:00Z'));
+      expect(result.noShows).toBe(2);
+      expect(result.createdAt).toEqual(new Date('2025-10-01T08:00:00Z'));
     });
 
     it('should throw NotFoundException when profile not found', async () => {
@@ -467,9 +465,9 @@ describe('ClientsService', () => {
 
       const result = await service.findById(TENANT_ID, PROFILE_ID);
 
-      expect(result.recentBookings).toHaveLength(2);
-      expect(result.recentBookings[0]!.id).toBe('booking-001');
-      expect(result.recentBookings[1]!.service.name).toBe('Coloring');
+      expect(result.bookings).toHaveLength(2);
+      expect(result.bookings[0]!.id).toBe('booking-001');
+      expect(result.bookings[1]!.service.name).toBe('Coloring');
     });
 
     it('should include recentPayments array', async () => {
@@ -509,9 +507,9 @@ describe('ClientsService', () => {
 
       const result = await service.findById(TENANT_ID, PROFILE_ID);
 
-      expect(result.recentPayments).toHaveLength(1);
-      expect(result.recentPayments[0]!.id).toBe('pay-001');
-      expect(result.recentPayments[0]!.booking.id).toBe('booking-001');
+      expect(result.payments).toHaveLength(1);
+      expect(result.payments[0]!.id).toBe('pay-001');
+      expect(result.payments[0]!.booking.id).toBe('booking-001');
     });
 
     it('should include notes array', async () => {
@@ -576,9 +574,8 @@ describe('ClientsService', () => {
 
       expect(result.totalBookings).toBe(0);
       expect(result.totalRevenue).toBe(0);
-      expect(result.lastVisitDate).toBeNull();
-      expect(result.firstVisitDate).toBeNull();
-      expect(result.noShowCount).toBe(0);
+      expect(result.lastVisit).toBeNull();
+      expect(result.noShows).toBe(0);
     });
 
     it('should handle null total_revenue in stats', async () => {

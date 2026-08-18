@@ -298,11 +298,13 @@ export class ClientsService {
       tags: profile.tags,
       preferences: profile.preferences,
       internalRating: profile.internalRating,
-      clientCreatedAt: profile.client.createdAt,
-      profileCreatedAt: profile.createdAt,
-      ...clientStats,
-      recentBookings,
-      recentPayments,
+      createdAt: profile.client.createdAt,
+      totalBookings: clientStats.totalBookings,
+      totalRevenue: clientStats.totalRevenue,
+      lastVisit: clientStats.lastVisitDate,
+      noShows: clientStats.noShowCount,
+      bookings: recentBookings,
+      payments: recentPayments,
       notes,
     };
   }
