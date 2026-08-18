@@ -150,7 +150,10 @@ export class ClientsService {
         preferences: profile.preferences,
         internalRating: profile.internalRating,
         createdAt: profile.createdAt,
-        ...clientStats,
+        totalBookings: clientStats.totalBookings,
+        totalRevenue: clientStats.totalRevenue,
+        lastVisit: clientStats.lastVisitDate,
+        noShows: clientStats.noShowCount,
       };
     });
 
@@ -162,11 +165,11 @@ export class ClientsService {
           cmp = (a.name ?? '').localeCompare(b.name ?? '');
           break;
         case 'lastVisit': {
-          const aDate = a.lastVisitDate
-            ? new Date(a.lastVisitDate).getTime()
+          const aDate = a.lastVisit
+            ? new Date(a.lastVisit).getTime()
             : 0;
-          const bDate = b.lastVisitDate
-            ? new Date(b.lastVisitDate).getTime()
+          const bDate = b.lastVisit
+            ? new Date(b.lastVisit).getTime()
             : 0;
           cmp = aDate - bDate;
           break;

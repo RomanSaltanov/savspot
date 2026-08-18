@@ -129,9 +129,8 @@ describe('ClientsService', () => {
       const client = result.data[0]!;
       expect(client.totalBookings).toBe(5);
       expect(client.totalRevenue).toBe(250.0);
-      expect(client.lastVisitDate).toEqual(new Date('2026-02-20T14:00:00Z'));
-      expect(client.firstVisitDate).toEqual(new Date('2025-11-01T10:00:00Z'));
-      expect(client.noShowCount).toBe(1);
+      expect(client.lastVisit).toEqual(new Date('2026-02-20T14:00:00Z'));
+      expect(client.noShows).toBe(1);
     });
 
     it('should return default stats when $queryRaw returns empty (no bookings for clients)', async () => {
@@ -145,9 +144,8 @@ describe('ClientsService', () => {
       const client = result.data[0]!;
       expect(client.totalBookings).toBe(0);
       expect(client.totalRevenue).toBe(0);
-      expect(client.lastVisitDate).toBeNull();
-      expect(client.firstVisitDate).toBeNull();
-      expect(client.noShowCount).toBe(0);
+      expect(client.lastVisit).toBeNull();
+      expect(client.noShows).toBe(0);
     });
 
     it('should map profile fields to response shape', async () => {
