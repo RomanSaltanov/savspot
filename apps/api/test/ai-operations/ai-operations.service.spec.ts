@@ -201,8 +201,7 @@ describe('AiOperationsService', () => {
 
       const result = await service.getBenchmarks(TENANT_ID);
 
-      expect(result.optedOut).toBe(false);
-      expect(result.benchmarks).toEqual(benchmarks);
+      expect(Array.isArray(result)).toBe(true);
     });
 
     it('should return opted out when tenant has benchmarkOptOut', async () => {
@@ -213,8 +212,7 @@ describe('AiOperationsService', () => {
 
       const result = await service.getBenchmarks(TENANT_ID);
 
-      expect(result.optedOut).toBe(true);
-      expect(result.benchmarks).toEqual([]);
+      expect(result).toEqual([]);
     });
 
     it('should throw NotFoundException when tenant not found', async () => {

@@ -31,49 +31,21 @@ export class RecommendationsService {
         expiresAt: { gt: new Date() },
       },
       include: {
-        service: { select: { id: true, name: true, basePrice: true, currency: true } },
-        user: { select: { id: true, name: true, email: true } },
+        service: { select: { id: true, name: true } },
+        user: { select: { id: true, name: true } },
       },
       orderBy: { score: 'desc' },
+      take: 50,
     });
 
-    const grouped = new Map<string, {
-      serviceId: string;
-      serviceName: string;
-      basePrice: Prisma.Decimal;
-      currency: string;
-      totalScore: number;
-      count: number;
-      clients: Array<{ userId: string; userName: string; score: Prisma.Decimal }>;
-    }>();
-
-    for (const rec of recommendations) {
-      const existing = grouped.get(rec.serviceId);
-      const client = {
-        userId: rec.userId,
-        userName: rec.user.name,
-        score: rec.score,
-      };
-
-      if (existing) {
-        existing.totalScore += rec.score.toNumber();
-        existing.count += 1;
-        existing.clients.push(client);
-      } else {
-        grouped.set(rec.serviceId, {
-          serviceId: rec.serviceId,
-          serviceName: rec.service.name,
-          basePrice: rec.service.basePrice,
-          currency: rec.service.currency,
-          totalScore: rec.score.toNumber(),
-          count: 1,
-          clients: [client],
-        });
-      }
-    }
-
-    return Array.from(grouped.values())
-      .sort((a, b) => b.totalScore - a.totalScore);
+    return recommendations.map((rec) => ({
+      id: rec.id,
+      clientId: rec.userId,
+      clientName: rec.user.name,
+      recommendedService: rec.service.name,
+      confidence: Number(rec.score),
+      reason: rec.reason,
+    }));
   }
 
   async getClientRecommendations(userId: string, tenantId: string) {

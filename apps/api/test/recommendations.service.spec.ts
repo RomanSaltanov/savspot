@@ -106,14 +106,10 @@ describe('RecommendationsService', () => {
 
       const result = await service.getUpsellRecommendations(TENANT_ID);
 
-      expect(result).toHaveLength(2);
-      // First group (service-001) has total 1.6, second (service-002) has 0.5
-      expect(result[0]!.serviceId).toBe(SERVICE_ID);
-      expect(result[0]!.totalScore).toBe(1.6);
-      expect(result[0]!.count).toBe(2);
-      expect(result[0]!.clients).toHaveLength(2);
-      expect(result[1]!.serviceId).toBe('service-002');
-      expect(result[1]!.totalScore).toBe(0.5);
+      expect(result).toHaveLength(3);
+      expect(result[0]!.clientName).toBeDefined();
+      expect(result[0]!.recommendedService).toBeDefined();
+      expect(result[0]!.confidence).toBeGreaterThan(0);
     });
   });
 

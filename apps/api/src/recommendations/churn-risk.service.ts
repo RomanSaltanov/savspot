@@ -17,6 +17,21 @@ const RISK_LEVEL_ORDER: Record<RiskLevel, number> = {
   CRITICAL: 3,
 };
 
+function deriveSuggestedAction(riskLevel: RiskLevel, factors: unknown): string {
+  const f = factors as { daysSinceLast?: number; medianIntervalDays?: number } | null;
+  const days = f?.daysSinceLast ?? 0;
+  switch (riskLevel) {
+    case 'CRITICAL':
+      return `Re-engage immediately — ${days} days since last visit`;
+    case 'HIGH':
+      return `Send a win-back offer — overdue by ${days} days`;
+    case 'MEDIUM':
+      return `Schedule a reminder — ${days} days since last visit`;
+    default:
+      return 'Monitor booking patterns';
+  }
+}
+
 function computeRiskLevel(score: number): RiskLevel {
   if (score < 0.3) return 'LOW';
   if (score < 0.6) return 'MEDIUM';
@@ -51,13 +66,41 @@ export class ChurnRiskService {
       .filter(([, order]) => order >= threshold)
       .map(([level]) => level);
 
-    return this.prisma.churnRiskScore.findMany({
+    const scores = await this.prisma.churnRiskScore.findMany({
       where: {
         tenantId,
         riskLevel: { in: riskLevels },
       },
       orderBy: { score: 'desc' },
     });
+
+    if (!scores.length) return [];
+
+    const clientIds = scores.map((s) => s.clientId);
+
+    const [clients, bookingCounts] = await Promise.all([
+      this.prisma.user.findMany({
+        where: { id: { in: clientIds } },
+        select: { id: true, name: true },
+      }),
+      this.prisma.booking.groupBy({
+        by: ['clientId'],
+        where: { clientId: { in: clientIds }, tenantId },
+        _count: { id: true },
+      }),
+    ]);
+
+    const clientMap = new Map(clients.map((c) => [c.id, c.name]));
+    const countMap = new Map(bookingCounts.map((b) => [b.clientId, b._count.id]));
+
+    return scores.map((s) => ({
+      clientId: s.clientId,
+      clientName: clientMap.get(s.clientId) ?? 'Unknown',
+      riskScore: Number(s.score),
+      lastVisit: s.lastBooking?.toISOString() ?? null,
+      totalBookings: countMap.get(s.clientId) ?? 0,
+      suggestedAction: deriveSuggestedAction(s.riskLevel, s.factors),
+    }));
   }
 
   async computeChurnRisk(): Promise<void> {
